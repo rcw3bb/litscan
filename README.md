@@ -6,6 +6,7 @@
 
 - Python 3.14+
 - Poetry 2.2+
+- [rich](https://github.com/Textualize/rich) ≥15.0 (installed automatically as a runtime dependency)
 
 ## Installation
 
@@ -31,7 +32,7 @@ poetry run python -m litscan.cli <path> [options]
 
 | Argument | Description |
 |----------|-------------|
-| `path`   | Target directory or file to scan |
+| `path`   | Target directory or file to scan. Multiple paths can be specified, separated by a semicolon (e.g. `src;lib;tests`). |
 
 ### Options
 
@@ -41,6 +42,8 @@ poetry run python -m litscan.cli <path> [options]
 | `--output <name>` | `litscan-output` | Base name (without extension) for output file(s) |
 | `--output-dir <dir>` | `reports` | Directory where output file(s) will be written |
 | `--format <fmt>` | `json` | Output format: `json`, `html`, or `all` |
+| `--workers <n>` | `min(32, cpu_count + 4)` | Number of parallel worker threads used during scanning |
+| `--db <path>` | `<system-temp>/litscan.db` | Path to the SQLite scratch database that stores occurrences during a scan run. Session records are removed after the report is written. |
 
 ### Examples
 
@@ -73,10 +76,12 @@ poetry run litscan src/main/java --ext java --format all --output-dir reports
 ```mermaid
 flowchart TD
     CLI["cli.py\n(entry point)"] --> discover["discover_files()"]
-    discover --> scan["scan_literals()\nscanner.py"]
-    scan --> group["group_literals()\nscanner.py"]
-    group --> JSON["JSON report"]
-    group --> HTML["HTML report"]
+    discover --> concurrent["ThreadPoolExecutor\n(parallel scan)"]
+    concurrent --> scan["scan_file()\nscanner.py"]
+    scan --> store["SessionStore\nstore.py (SQLite)"]
+    store --> report["write_outputs()\nreporter.py"]
+    report --> JSON["JSON report"]
+    report --> HTML["HTML report"]
 ```
 
 ## Development

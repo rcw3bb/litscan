@@ -14,14 +14,16 @@ pylint 10/10. Author: Ron Webb (ron@ronella.xyz), version 1.0.0.
 - litscan/ — main package (CLI, scanner, utilities)
 - litscan/__init__.py — package init; sets `__version__`
 - litscan/cli.py — CLI entry point (`main` function)
+- litscan/logging.ini — logging config bundled inside the package; seeded into `LITSCAN_CONFIG_DIR` on first run
 - litscan/scanner.py — literal scanning logic
 - litscan/store.py — SQLite session store (`SessionStore`); occurrences persisted per UUID, deleted after report
+- litscan/reporter.py — report generation (JSON + HTML output); exposes `write_outputs`
 - litscan/util.py — shared utilities; defines `setup_logger` (must match canonical gist)
 - tests/ — pytest suite mirroring litscan/ structure
 - tests/fixtures/ — sample source files used in tests (java, js, py)
 - tests/test_store.py — tests for store module
+- tests/test_reporter.py — tests for reporter module
 - pyproject.toml — PEP 621 project metadata and Poetry build config
-- logging.ini — root logging config (must match canonical gist; log file: litscan.log)
 - .pylintrc — pylint config (must match canonical gist)
 - reports/ — scanner output artifacts (HTML, JSON)
 - CHANGELOG.md — version history
@@ -31,6 +33,7 @@ pylint 10/10. Author: Ron Webb (ron@ronella.xyz), version 1.0.0.
 - Before adding a module, place it inside litscan/; mirror its path under tests/ as test_*.py.
 - Before changing logging setup, verify logging.ini and `setup_logger` in util.py each match their canonical gists exactly.
 - Never modify pyproject.toml version, .pylintrc, or poetry.lock without explicit approval.
+- When the version is updated, keep it in sync across all three locations: `pyproject.toml` (`version` field), `README.md` (version badge or reference), and `litscan/__init__.py` (`__version__`).
 - Use relative imports within litscan/; add type hints to all function arguments and return values.
 - Use `collections.abc` instead of deprecated `typing` generics (e.g. `Callable`, `Sequence`).
 - Naming: snake_case for variables/methods, PascalCase for classes, UPPER_CASE for constants; prefix private members with `_`.

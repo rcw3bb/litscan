@@ -7,11 +7,16 @@ authors = [
 ]
 requires-python = "^3.14"
 dependencies = [
+    "rich (>=15.0.0,<16.0.0)"
 ]
 
 [project.scripts]
 litscan = "litscan.cli:main"
 
+
+[tool.poetry]
+packages = [{include = "litscan"}]
+include = ["litscan/logging.ini"]
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]

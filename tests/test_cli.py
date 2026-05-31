@@ -298,6 +298,24 @@ def test_main_format_all_writes_both_files(tmp_path: Path, monkeypatch) -> None:
     assert "'both'" in html_content
 
 
+def test_main_logs_app_header_on_startup(tmp_path: Path, monkeypatch, caplog) -> None:
+    """It should log the application name and version as a header on startup."""
+    (tmp_path / "code.js").write_text("x = 1;", encoding="utf-8")
+    out_dir = tmp_path / "out"
+    test_logger = logging.getLogger("test.cli.header")
+
+    monkeypatch.setattr(cli, "setup_logger", lambda _name: test_logger)
+    monkeypatch.setattr(
+        "sys.argv",
+        ["litscan", str(tmp_path), "--output-dir", str(out_dir)],
+    )
+
+    with caplog.at_level(logging.INFO, logger="test.cli.header"):
+        cli.main()
+
+    assert any("litscan v" in r.message for r in caplog.records)
+
+
 def test_main_format_json_explicit_writes_only_json(
     tmp_path: Path, monkeypatch
 ) -> None:
