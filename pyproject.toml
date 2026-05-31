@@ -6,6 +6,7 @@ authors = [
     {name = "Ron Webb",email = "ron@ronella.xyz"}
 ]
 readme = "README.md"
+license = {file = "LICENSE"}
 requires-python = ">=3.14"
 dependencies = [
     "rich (>=15.0.0,<16.0.0)",
