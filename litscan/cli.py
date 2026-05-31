@@ -32,6 +32,7 @@ from .util import setup_logger
 _VALID_FORMATS = ("json", "html", "all")
 _APP_NAME = "litscan"
 _console = Console(stderr=True)
+_logger = setup_logger(__name__)
 
 
 def _parse_extensions(raw: str) -> list[str]:
@@ -39,6 +40,9 @@ def _parse_extensions(raw: str) -> list[str]:
 
     Each entry is lowercased and prefixed with a dot when absent.
     Example: ``"py,js, TS"`` → ``['.py', '.js', '.ts']``
+
+    Author: Ron Webb
+    Since: 1.0.0
     """
     result: list[str] = []
     for part in raw.split(","):
@@ -51,9 +55,12 @@ def _parse_extensions(raw: str) -> list[str]:
 
 
 def _parse_paths(raw: str) -> list[Path]:
-    """Parse a comma-separated path string into a list of Path objects.
+    """Parse a semicolon-separated path string into a list of Path objects.
 
     Example: ``"/src/a; /src/b"`` → ``[Path('/src/a'), Path('/src/b')]``
+
+    Author: Ron Webb
+    Since: 1.0.0
     """
     result: list[Path] = []
     for part in raw.split(";"):
@@ -68,6 +75,9 @@ def _scan_and_store(task: tuple[Path, SessionStore, str]) -> None:
 
     Accepts a 3-tuple so the function can be passed directly to
     :meth:`concurrent.futures.Executor.map` without a closure.
+
+    Author: Ron Webb
+    Since: 1.0.0
     """
     file_path, store, session_id = task
     store.insert_occurrences(session_id, scan_file(file_path))
@@ -79,6 +89,9 @@ def discover_files(path: Path, extensions: list[str]) -> list[Path]:
     When *extensions* is empty every file is included.
     Both files and directories are accepted; for a plain file the extension
     filter still applies.
+
+    Author: Ron Webb
+    Since: 1.0.0
     """
     candidates: list[Path]
     if path.is_file():
@@ -122,7 +135,10 @@ def _run_concurrent_scan(
                 for f in files
             }
             for future in concurrent.futures.as_completed(futures):
-                future.result()
+                try:
+                    future.result()
+                except Exception as exc:  # pylint: disable=broad-exception-caught
+                    _logger.warning("Failed to scan %s: %s", futures[future], exc)
                 progress.advance(task)
 
 
@@ -159,7 +175,7 @@ def _run_concurrent_scan(
     "--format",
     "fmt",
     default="json",
-    type=click.Choice(list(_VALID_FORMATS)),
+    type=click.Choice(_VALID_FORMATS),
     help="Output format: json, html, or all (default: json).",
 )
 @click.option(
@@ -191,10 +207,13 @@ def main(  # pylint: disable=too-many-arguments,too-many-positional-arguments,to
     workers: int,
     db_path: Path,
 ) -> None:
-    """Scan source files for string and numeric literals."""
-    logger = setup_logger(__name__)
+    """Scan source files for string and numeric literals.
+
+    Author: Ron Webb
+    Since: 1.0.0
+    """
     _header = f"{_APP_NAME} v{__version__}"
-    logger.info(_header)
+    _logger.info(_header)
     _console.print(f"[bold]{_header}[/bold]")
     extensions = _parse_extensions(ext) if ext else []
     paths = _parse_paths(path)
@@ -209,7 +228,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-positional-arguments,to
                     files.append(found_file)
 
     if not files:
-        logger.info("No files found in %s", path)
+        _logger.info("No files found in %s", path)
         _console.print("[yellow]No files found.[/yellow]")
         return
 
@@ -222,12 +241,12 @@ def main(  # pylint: disable=too-many-arguments,too-many-positional-arguments,to
         groups = store.read_groups(session_id)
         stem = Path(output).stem
         written = write_outputs(groups, output_dir, stem, fmt)
-        store.delete_session(session_id)
     finally:
+        store.delete_session(session_id)
         store.close()
 
     total = sum(g["count"] for g in groups)
-    logger.info(
+    _logger.info(
         "Found %s literals (%s unique) -> %s",
         total,
         len(groups),

@@ -1,11 +1,13 @@
 """
-logger module.
+Utility helpers for litscan.
 
-Provides a setup_logger function for consistent logging configuration.
+Provides :func:`setup_logger` for consistent logging configuration.
 
 Author: Ron Webb
 Since: 1.0.0
 """
+
+from __future__ import annotations
 
 import importlib.resources
 import logging
@@ -29,7 +31,7 @@ def _load_config(config_path: str) -> None:
         logging.config.fileConfig(config_path, disable_existing_loggers=False)
     except Exception:  # pylint: disable=broad-exception-caught
         logging.basicConfig(level=logging.INFO)
-        logging.warning(
+        logging.exception(
             "Failed to load logging config from %s. Using basic configuration.",
             config_path,
         )
@@ -63,7 +65,7 @@ def _ensure_config_dir(config_dir: Path) -> Path:
     if not target.exists():
         pkg_ref = importlib.resources.files("litscan").joinpath("logging.ini")
         with importlib.resources.as_file(pkg_ref) as src_path:
-            shutil.copy2(str(src_path), str(target))
+            shutil.copy2(src_path, target)
     return target
 
 

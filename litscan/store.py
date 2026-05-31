@@ -67,7 +67,7 @@ class SessionStore:
         Author: Ron Webb
         Since: 1.0.0
         """
-        self._conn = sqlite3.connect(str(db_path), check_same_thread=False)
+        self._conn = sqlite3.connect(db_path, check_same_thread=False)
         self._lock = threading.Lock()
         with self._lock:
             self._conn.execute("PRAGMA journal_mode=WAL")
@@ -132,3 +132,19 @@ class SessionStore:
         """
         with self._lock:
             self._conn.close()
+
+    def __enter__(self) -> SessionStore:
+        """Return *self* to support use as a context manager.
+
+        Author: Ron Webb
+        Since: 1.0.0
+        """
+        return self
+
+    def __exit__(self, *_: object) -> None:
+        """Close the database connection on context manager exit.
+
+        Author: Ron Webb
+        Since: 1.0.0
+        """
+        self.close()

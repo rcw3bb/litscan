@@ -21,13 +21,16 @@ _PATTERN = re.compile(
     r"|'(?:[^'\\\n]|\\.)*'"
     r"|\b\d+\.\d+\b"
     r"|\b\d+\b",
-    re.DOTALL,
 )
 
 
 @dataclass(frozen=True)
 class LiteralOccurrence:
-    """Represents a discovered literal value in source code."""
+    """Represents a discovered literal value in source code.
+
+    Author: Ron Webb
+    Since: 1.0.0
+    """
 
     file_path: Path
     line: int
@@ -42,6 +45,9 @@ def _build_line_offsets(source: str) -> list[int]:
     entry is the offset of the first character on the following line.
     Precomputing this once gives O(log n) line/column lookup per match via
     :func:`_line_and_column`, instead of the naive O(n) slice-and-scan.
+
+    Author: Ron Webb
+    Since: 1.0.0
     """
     offsets: list[int] = [0]
     start = 0
@@ -59,6 +65,9 @@ def _line_and_column(line_offsets: list[int], offset: int) -> tuple[int, int]:
 
     *line_offsets* must be the list returned by :func:`_build_line_offsets`.
     Uses :func:`bisect.bisect_right` for O(log n) lookup.
+
+    Author: Ron Webb
+    Since: 1.0.0
     """
     line = bisect.bisect_right(line_offsets, offset)
     col = offset - line_offsets[line - 1]
@@ -73,6 +82,9 @@ def scan_literals(source: str, file_path: Path) -> list[LiteralOccurrence]:
       (may span multiple lines).
     - Strings/text enclosed with double or single quotes (single line).
     - Decimal and integer numbers.
+
+    Author: Ron Webb
+    Since: 1.0.0
     """
     line_offsets = _build_line_offsets(source)
     occurrences: list[LiteralOccurrence] = []
@@ -95,19 +107,29 @@ def scan_file(file_path: Path) -> list[LiteralOccurrence]:
     Convenience wrapper around :func:`scan_literals` intended for parallel
     execution: a single callable that handles both I/O and scanning so it can
     be submitted directly to a :class:`concurrent.futures.Executor`.
+
+    Author: Ron Webb
+    Since: 1.0.0
     """
     contents = file_path.read_text(encoding="utf-8", errors="replace")
     return scan_literals(contents, file_path)
 
 
 class LiteralGroup(TypedDict):
-    """JSON-serialisable representation of a grouped literal."""
+    """JSON-serialisable representation of a grouped literal.
+
+    Author: Ron Webb
+    Since: 1.0.0
+    """
 
     count: int
     literal: str
     files: list[str]
 
 
+# ScanReport uses the functional TypedDict syntax because "run-date" is not a
+# valid Python identifier.  Docstrings are not supported in this form; see the
+# individual field names for documentation of the report structure.
 ScanReport = TypedDict(
     "ScanReport",
     {
