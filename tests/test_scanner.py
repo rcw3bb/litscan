@@ -9,8 +9,6 @@ from pathlib import Path
 from litscan.scanner import (
     LiteralOccurrence,
     _build_line_offsets,
-    count_literals,
-    group_literals,
     scan_file,
     scan_literals,
 )
@@ -132,62 +130,6 @@ def test_scan_literals_java_fixture() -> None:
     assert "99" in values
     assert "3.14159" in values
     assert any(v.startswith('"""') for v in values)
-
-
-def test_count_literals_returns_correct_counts() -> None:
-    """It should count how many times each unique literal value was used."""
-    source = "x = 1; y = 1; z = 2;"
-    occurrences = scan_literals(source, Path("f.txt"))
-    counts = count_literals(occurrences)
-    assert counts["1"] == 2
-    assert counts["2"] == 1
-
-
-def test_count_literals_sorted_by_count_descending() -> None:
-    """The most frequently used literals should appear first."""
-    source = "a = 1; b = 1; c = 1; d = 2;"
-    occurrences = scan_literals(source, Path("f.txt"))
-    counts = count_literals(occurrences)
-    values_in_order = list(counts.keys())
-    assert values_in_order[0] == "1"  # highest count first
-
-
-def test_count_literals_empty_occurrences_returns_empty_dict() -> None:
-    """It should return an empty dict when given no occurrences."""
-    assert count_literals([]) == {}
-
-
-def test_group_literals_returns_correct_structure() -> None:
-    """It should return a list with count, literal, and files keys."""
-    source = "x = 1; y = 1;"
-    occurrences = scan_literals(source, Path("f.txt"))
-    groups = group_literals(occurrences)
-    group_1 = next(g for g in groups if g["literal"] == "1")
-    assert group_1["count"] == 2
-    assert len(group_1["files"]) == 2
-
-
-def test_group_literals_files_contain_location_string() -> None:
-    """Each files entry should include the file path, line, and column."""
-    source = "x = 42;"
-    occurrences = scan_literals(source, Path("code.py"))
-    groups = group_literals(occurrences)
-    group = next(g for g in groups if g["literal"] == "42")
-    assert any("code.py" in f and ":1:" in f for f in group["files"])
-
-
-def test_group_literals_sorted_by_count_descending() -> None:
-    """The group with the highest count should appear first."""
-    source = "a = 1; b = 1; c = 2;"
-    occurrences = scan_literals(source, Path("f.txt"))
-    groups = group_literals(occurrences)
-    assert groups[0]["literal"] == "1"
-    assert groups[0]["count"] == 2
-
-
-def test_group_literals_empty_occurrences_returns_empty_list() -> None:
-    """It should return an empty list when given no occurrences."""
-    assert group_literals([]) == []
 
 
 def test_build_line_offsets_single_line() -> None:

@@ -100,18 +100,6 @@ def scan_file(file_path: Path) -> list[LiteralOccurrence]:
     return scan_literals(contents, file_path)
 
 
-def count_literals(occurrences: list[LiteralOccurrence]) -> dict[str, int]:
-    """Return the usage count of each unique literal value.
-
-    The result is sorted by count descending, then by value ascending for
-    ties, so the most frequently used literals appear first.
-    """
-    counts: dict[str, int] = {}
-    for occurrence in occurrences:
-        counts[occurrence.value] = counts.get(occurrence.value, 0) + 1
-    return dict(sorted(counts.items(), key=lambda item: (-item[1], item[0])))
-
-
 class LiteralGroup(TypedDict):
     """JSON-serialisable representation of a grouped literal."""
 
@@ -129,23 +117,3 @@ ScanReport = TypedDict(
         "findings": list[LiteralGroup],
     },
 )
-
-
-def group_literals(occurrences: list[LiteralOccurrence]) -> list[LiteralGroup]:
-    """Group occurrences by literal value into a JSON-serialisable structure.
-
-    Returns a list of :class:`LiteralGroup` dicts sorted by count descending,
-    then by literal ascending for ties. Each entry has keys ``count``,
-    ``literal``, and ``files`` where every file entry is a string of the form
-    ``file_path:line:column``.
-    """
-    groups: dict[str, list[str]] = {}
-    for occurrence in occurrences:
-        location = f"{occurrence.file_path}:{occurrence.line}:{occurrence.column}"
-        groups.setdefault(occurrence.value, []).append(location)
-
-    result: list[LiteralGroup] = [
-        LiteralGroup(count=len(locs), literal=value, files=locs)
-        for value, locs in groups.items()
-    ]
-    return sorted(result, key=lambda item: (-item["count"], item["literal"]))

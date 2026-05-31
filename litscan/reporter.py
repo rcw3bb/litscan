@@ -89,6 +89,12 @@ _CSS = """
     font-size: 0.95em;
     word-break: break-all;
   }
+  td.literal code .truncated {
+    color: #999;
+    font-style: italic;
+    cursor: help;
+    user-select: none;
+  }
   td.locations { font-family: 'Consolas', 'Courier New', monospace; font-size: 0.82em; color: #555; word-break: break-all; }
   footer { margin-top: 1.5em; font-size: 0.8em; color: #aaa; text-align: center; }
 """
@@ -105,6 +111,22 @@ def _write_json(groups: list[LiteralGroup], path: Path, run_date: str) -> None:
     path.write_text(json.dumps(report, indent=2), encoding="utf-8")
 
 
+_TRUNCATED_MARKER = '<span class="truncated" title="Multiline literal \u2014 only first line shown">\u2026</span>'
+
+
+def _literal_display(literal: str) -> str:
+    """Return HTML for the first line of *literal* with a truncation marker when multiline.
+
+    Author: Ron Webb
+    Since: 1.0.0
+    """
+    first_line, _, rest = literal.partition("\n")
+    display = _html.escape(first_line, quote=False)
+    if rest:
+        display += _TRUNCATED_MARKER
+    return display
+
+
 def _build_html(groups: list[LiteralGroup], run_date: str) -> str:
     """Build an HTML report string for the given literal groups."""
     total = sum(g["count"] for g in groups)
@@ -112,7 +134,7 @@ def _build_html(groups: list[LiteralGroup], run_date: str) -> str:
 
     rows: list[str] = []
     for idx, group in enumerate(groups, start=1):
-        literal_display = _html.escape(group["literal"], quote=False)
+        literal_display = _literal_display(group["literal"])
         literal_attr = _html.escape(group["literal"], quote=True)
         count = group["count"]
         locations = "<br>".join(_html.escape(f, quote=False) for f in group["files"])

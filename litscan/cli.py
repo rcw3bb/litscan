@@ -11,8 +11,8 @@ import os
 import tempfile
 import uuid
 from pathlib import Path
-import argparse
 
+import click
 from rich.console import Console
 from rich.progress import (
     BarColumn,
@@ -61,78 +61,6 @@ def _parse_paths(raw: str) -> list[Path]:
         if stripped:
             result.append(Path(stripped))
     return result
-
-
-def build_parser() -> argparse.ArgumentParser:
-    """Build and return the argument parser."""
-    parser = argparse.ArgumentParser(
-        description="Scan files for string and numeric literals"
-    )
-    parser.add_argument(
-        "path",
-        help=(
-            "Target directory (or directories) to scan. "
-            "Separate multiple paths with a semicolon "
-            "(e.g. src;lib;tests)."
-        ),
-    )
-    parser.add_argument(
-        "--ext",
-        default="",
-        help=(
-            "Comma-separated file extensions to include "
-            "(e.g. py,js,ts). Omit to scan all files."
-        ),
-    )
-    parser.add_argument(
-        "--output",
-        default="litscan-output",
-        help=(
-            "Base name (without extension) for the output file(s) "
-            "(default: litscan-output)."
-        ),
-    )
-    parser.add_argument(
-        "--output-dir",
-        default=Path("reports"),
-        type=Path,
-        help=(
-            "Directory where the output file will be written "
-            "(default: reports). "
-            "The filename from --output is placed inside this directory."
-        ),
-    )
-    parser.add_argument(
-        "--format",
-        default="json",
-        choices=_VALID_FORMATS,
-        help="Output format: json, html, or all (default: json).",
-    )
-    parser.add_argument(
-        "--workers",
-        type=int,
-        default=min(32, (os.cpu_count() or 1) + 4),
-        help=(
-            "Number of parallel worker threads used to scan files "
-            "(default: min(32, cpu_count + 4))."
-        ),
-    )
-    parser.add_argument(
-        "--db",
-        type=Path,
-        default=Path(tempfile.gettempdir()) / "litscan.db",
-        help=(
-            "Path to the SQLite scratch database used to store occurrences "
-            "during a scan run (default: <system-temp>/litscan.db). "
-            "Session records are removed after the report is written."
-        ),
-    )
-    return parser
-
-
-def _output_stem(name: str) -> str:
-    """Return the stem of the output name, stripping any file extension."""
-    return Path(name).stem
 
 
 def _scan_and_store(task: tuple[Path, SessionStore, str]) -> None:
@@ -198,15 +126,78 @@ def _run_concurrent_scan(
                 progress.advance(task)
 
 
-def main() -> int:
-    """Run the CLI entry point."""
+@click.command()
+@click.argument("path")
+@click.option(
+    "--ext",
+    default="",
+    help=(
+        "Comma-separated file extensions to include "
+        "(e.g. py,java,js,ts). Omit to scan all files."
+    ),
+)
+@click.option(
+    "--output",
+    default="litscan-output",
+    help=(
+        "Base name (without extension) for the output file(s) "
+        "(default: litscan-output)."
+    ),
+)
+@click.option(
+    "--output-dir",
+    "output_dir",
+    default="reports",
+    type=click.Path(path_type=Path),
+    help=(
+        "Directory where the output file will be written "
+        "(default: reports). "
+        "The filename from --output is placed inside this directory."
+    ),
+)
+@click.option(
+    "--format",
+    "fmt",
+    default="json",
+    type=click.Choice(list(_VALID_FORMATS)),
+    help="Output format: json, html, or all (default: json).",
+)
+@click.option(
+    "--workers",
+    type=int,
+    default=min(32, (os.cpu_count() or 1) + 4),
+    help=(
+        "Number of parallel worker threads used to scan files "
+        "(default: min(32, cpu_count + 4))."
+    ),
+)
+@click.option(
+    "--db",
+    "db_path",
+    default=str(Path(tempfile.gettempdir()) / "litscan.db"),
+    type=click.Path(path_type=Path),
+    help=(
+        "Path to the SQLite scratch database used to store occurrences "
+        "during a scan run (default: <system-temp>/litscan.db). "
+        "Session records are removed after the report is written."
+    ),
+)
+def main(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
+    path: str,
+    ext: str,
+    output: str,
+    output_dir: Path,
+    fmt: str,
+    workers: int,
+    db_path: Path,
+) -> None:
+    """Scan source files for string and numeric literals."""
     logger = setup_logger(__name__)
     _header = f"{_APP_NAME} v{__version__}"
     logger.info(_header)
     _console.print(f"[bold]{_header}[/bold]")
-    args = build_parser().parse_args()
-    extensions = _parse_extensions(args.ext) if args.ext else []
-    paths = _parse_paths(args.path)
+    extensions = _parse_extensions(ext) if ext else []
+    paths = _parse_paths(path)
     seen: set[Path] = set()
     files: list[Path] = []
 
@@ -218,19 +209,19 @@ def main() -> int:
                     files.append(found_file)
 
     if not files:
-        logger.info("No files found in %s", args.path)
+        logger.info("No files found in %s", path)
         _console.print("[yellow]No files found.[/yellow]")
-        return 0
+        return
 
     _console.print(f"[bold]Scanning[/bold] {len(files)} file(s)\u2026")
 
     session_id = str(uuid.uuid4())
-    store = SessionStore(args.db)
+    store = SessionStore(db_path)
     try:
-        _run_concurrent_scan(files, store, session_id, args.workers)
+        _run_concurrent_scan(files, store, session_id, workers)
         groups = store.read_groups(session_id)
-        stem = _output_stem(args.output)
-        written = write_outputs(groups, args.output_dir, stem, args.format)
+        stem = Path(output).stem
+        written = write_outputs(groups, output_dir, stem, fmt)
         store.delete_session(session_id)
     finally:
         store.close()
@@ -248,8 +239,7 @@ def main() -> int:
         f"([bold]{len(groups)}[/bold] unique) "
         f"\u2192 {', '.join(str(p) for p in written)}"
     )
-    return 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    main()  # pylint: disable=no-value-for-parameter

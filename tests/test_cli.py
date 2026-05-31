@@ -10,6 +10,8 @@ from pathlib import Path
 import json
 import logging
 
+from click.testing import CliRunner
+
 from litscan import cli
 
 
@@ -77,11 +79,11 @@ def test_main_returns_zero_when_no_files(monkeypatch) -> None:
     """It should return zero when there are no files to scan."""
     monkeypatch.setattr(cli, "setup_logger", lambda _name: logging.getLogger("tests"))
     monkeypatch.setattr(cli, "discover_files", lambda _path, _ext: [])
-    monkeypatch.setattr("sys.argv", ["litscan", "some_dir"])
+    runner = CliRunner()
 
-    result = cli.main()
+    result = runner.invoke(cli.main, ["some_dir"])
 
-    assert result == 0
+    assert result.exit_code == 0
 
 
 def test_main_writes_json_for_discovered_file(tmp_path: Path, monkeypatch) -> None:
@@ -91,15 +93,12 @@ def test_main_writes_json_for_discovered_file(tmp_path: Path, monkeypatch) -> No
     out_dir = tmp_path / "out"
 
     monkeypatch.setattr(cli, "setup_logger", lambda _name: logging.getLogger("tests"))
-    monkeypatch.setattr(
-        "sys.argv",
-        ["litscan", str(tmp_path), "--output-dir", str(out_dir)],
-    )
+    runner = CliRunner()
 
-    result = cli.main()
+    result = runner.invoke(cli.main, [str(tmp_path), "--output-dir", str(out_dir)])
     data = json.loads((out_dir / "litscan-output.json").read_text(encoding="utf-8"))
 
-    assert result == 0
+    assert result.exit_code == 0
     assert any(g["literal"] == "'Ron'" for g in data["findings"])
     assert any("example.js" in f for g in data["findings"] for f in g["files"])
 
@@ -113,16 +112,15 @@ def test_main_ext_flag_filters_files(tmp_path: Path, monkeypatch) -> None:
     out_dir = tmp_path / "out"
 
     monkeypatch.setattr(cli, "setup_logger", lambda _name: logging.getLogger("tests"))
-    monkeypatch.setattr(
-        "sys.argv",
-        ["litscan", str(tmp_path), "--ext", "js", "--output-dir", str(out_dir)],
-    )
+    runner = CliRunner()
 
-    result = cli.main()
+    result = runner.invoke(
+        cli.main, [str(tmp_path), "--ext", "js", "--output-dir", str(out_dir)]
+    )
     data = json.loads((out_dir / "litscan-output.json").read_text(encoding="utf-8"))
     all_files = [f for g in data["findings"] for f in g["files"]]
 
-    assert result == 0
+    assert result.exit_code == 0
     assert any("app.js" in f for f in all_files)
     assert not any("notes.txt" in f for f in all_files)
 
@@ -135,16 +133,13 @@ def test_main_json_contains_count_and_files(tmp_path: Path, monkeypatch) -> None
     out_dir = tmp_path / "out"
 
     monkeypatch.setattr(cli, "setup_logger", lambda _name: logging.getLogger("tests"))
-    monkeypatch.setattr(
-        "sys.argv",
-        ["litscan", str(tmp_path), "--output-dir", str(out_dir)],
-    )
+    runner = CliRunner()
 
-    result = cli.main()
+    result = runner.invoke(cli.main, [str(tmp_path), "--output-dir", str(out_dir)])
     data = json.loads((out_dir / "litscan-output.json").read_text(encoding="utf-8"))
     hello_group = next(g for g in data["findings"] if g["literal"] == "'hello'")
 
-    assert result == 0
+    assert result.exit_code == 0
     assert hello_group["count"] == 2
     assert len(hello_group["files"]) == 2
 
@@ -157,11 +152,11 @@ def test_main_default_output_dir_is_reports(tmp_path: Path, monkeypatch) -> None
 
     monkeypatch.setattr(cli, "setup_logger", lambda _name: logging.getLogger("tests"))
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr("sys.argv", ["litscan", str(tmp_path)])
+    runner = CliRunner()
 
-    result = cli.main()
+    result = runner.invoke(cli.main, [str(tmp_path)])
 
-    assert result == 0
+    assert result.exit_code == 0
     assert (reports_dir / "litscan-output.json").exists()
 
 
@@ -172,15 +167,12 @@ def test_main_output_dir_places_file_in_directory(tmp_path: Path, monkeypatch) -
     out_dir = tmp_path / "results"
 
     monkeypatch.setattr(cli, "setup_logger", lambda _name: logging.getLogger("tests"))
-    monkeypatch.setattr(
-        "sys.argv",
-        ["litscan", str(tmp_path), "--output-dir", str(out_dir)],
-    )
+    runner = CliRunner()
 
-    result = cli.main()
+    result = runner.invoke(cli.main, [str(tmp_path), "--output-dir", str(out_dir)])
     expected_file = out_dir / "litscan-output.json"
 
-    assert result == 0
+    assert result.exit_code == 0
     assert expected_file.exists()
     data = json.loads(expected_file.read_text(encoding="utf-8"))
     assert any(g["literal"] == "'hi'" for g in data["findings"])
@@ -193,14 +185,11 @@ def test_main_output_dir_creates_missing_directory(tmp_path: Path, monkeypatch) 
     out_dir = tmp_path / "nested" / "deep"
 
     monkeypatch.setattr(cli, "setup_logger", lambda _name: logging.getLogger("tests"))
-    monkeypatch.setattr(
-        "sys.argv",
-        ["litscan", str(tmp_path), "--output-dir", str(out_dir)],
-    )
+    runner = CliRunner()
 
-    result = cli.main()
+    result = runner.invoke(cli.main, [str(tmp_path), "--output-dir", str(out_dir)])
 
-    assert result == 0
+    assert result.exit_code == 0
     assert (out_dir / "litscan-output.json").exists()
 
 
@@ -211,21 +200,13 @@ def test_main_output_dir_with_custom_filename(tmp_path: Path, monkeypatch) -> No
     out_dir = tmp_path / "out"
 
     monkeypatch.setattr(cli, "setup_logger", lambda _name: logging.getLogger("tests"))
-    monkeypatch.setattr(
-        "sys.argv",
-        [
-            "litscan",
-            str(tmp_path),
-            "--output",
-            "custom",
-            "--output-dir",
-            str(out_dir),
-        ],
+    runner = CliRunner()
+
+    result = runner.invoke(
+        cli.main, [str(tmp_path), "--output", "custom", "--output-dir", str(out_dir)]
     )
 
-    result = cli.main()
-
-    assert result == 0
+    assert result.exit_code == 0
     assert (out_dir / "custom.json").exists()
 
 
@@ -236,15 +217,14 @@ def test_main_format_html_writes_html_file(tmp_path: Path, monkeypatch) -> None:
     out_dir = tmp_path / "out"
 
     monkeypatch.setattr(cli, "setup_logger", lambda _name: logging.getLogger("tests"))
-    monkeypatch.setattr(
-        "sys.argv",
-        ["litscan", str(tmp_path), "--format", "html", "--output-dir", str(out_dir)],
-    )
+    runner = CliRunner()
 
-    result = cli.main()
+    result = runner.invoke(
+        cli.main, [str(tmp_path), "--format", "html", "--output-dir", str(out_dir)]
+    )
     html_file = out_dir / "litscan-output.html"
 
-    assert result == 0
+    assert result.exit_code == 0
     assert html_file.exists()
     assert not (out_dir / "litscan-output.json").exists()
     content = html_file.read_text(encoding="utf-8")
@@ -261,15 +241,14 @@ def test_main_format_html_escapes_special_characters(
     out_dir = tmp_path / "out"
 
     monkeypatch.setattr(cli, "setup_logger", lambda _name: logging.getLogger("tests"))
-    monkeypatch.setattr(
-        "sys.argv",
-        ["litscan", str(tmp_path), "--format", "html", "--output-dir", str(out_dir)],
-    )
+    runner = CliRunner()
 
-    result = cli.main()
+    result = runner.invoke(
+        cli.main, [str(tmp_path), "--format", "html", "--output-dir", str(out_dir)]
+    )
     content = (out_dir / "litscan-output.html").read_text(encoding="utf-8")
 
-    assert result == 0
+    assert result.exit_code == 0
     assert "&lt;b&gt;bold&lt;/b&gt;" in content
 
 
@@ -280,14 +259,13 @@ def test_main_format_all_writes_both_files(tmp_path: Path, monkeypatch) -> None:
     out_dir = tmp_path / "out"
 
     monkeypatch.setattr(cli, "setup_logger", lambda _name: logging.getLogger("tests"))
-    monkeypatch.setattr(
-        "sys.argv",
-        ["litscan", str(tmp_path), "--format", "all", "--output-dir", str(out_dir)],
+    runner = CliRunner()
+
+    result = runner.invoke(
+        cli.main, [str(tmp_path), "--format", "all", "--output-dir", str(out_dir)]
     )
 
-    result = cli.main()
-
-    assert result == 0
+    assert result.exit_code == 0
     assert (out_dir / "litscan-output.json").exists()
     assert (out_dir / "litscan-output.html").exists()
     json_data = json.loads(
@@ -305,13 +283,10 @@ def test_main_logs_app_header_on_startup(tmp_path: Path, monkeypatch, caplog) ->
     test_logger = logging.getLogger("test.cli.header")
 
     monkeypatch.setattr(cli, "setup_logger", lambda _name: test_logger)
-    monkeypatch.setattr(
-        "sys.argv",
-        ["litscan", str(tmp_path), "--output-dir", str(out_dir)],
-    )
+    runner = CliRunner()
 
     with caplog.at_level(logging.INFO, logger="test.cli.header"):
-        cli.main()
+        runner.invoke(cli.main, [str(tmp_path), "--output-dir", str(out_dir)])
 
     assert any("litscan v" in r.message for r in caplog.records)
 
@@ -325,14 +300,13 @@ def test_main_format_json_explicit_writes_only_json(
     out_dir = tmp_path / "out"
 
     monkeypatch.setattr(cli, "setup_logger", lambda _name: logging.getLogger("tests"))
-    monkeypatch.setattr(
-        "sys.argv",
-        ["litscan", str(tmp_path), "--format", "json", "--output-dir", str(out_dir)],
+    runner = CliRunner()
+
+    result = runner.invoke(
+        cli.main, [str(tmp_path), "--format", "json", "--output-dir", str(out_dir)]
     )
 
-    result = cli.main()
-
-    assert result == 0
+    assert result.exit_code == 0
     assert (out_dir / "litscan-output.json").exists()
     assert not (out_dir / "litscan-output.html").exists()
 
@@ -348,16 +322,15 @@ def test_main_multiple_comma_separated_paths(tmp_path: Path, monkeypatch) -> Non
     out_dir = tmp_path / "out"
 
     monkeypatch.setattr(cli, "setup_logger", lambda _name: logging.getLogger("tests"))
-    monkeypatch.setattr(
-        "sys.argv",
-        ["litscan", f"{dir_a};{dir_b}", "--output-dir", str(out_dir)],
-    )
+    runner = CliRunner()
 
-    result = cli.main()
+    result = runner.invoke(
+        cli.main, [f"{dir_a};{dir_b}", "--output-dir", str(out_dir)]
+    )
     data = json.loads((out_dir / "litscan-output.json").read_text(encoding="utf-8"))
     all_literals = [g["literal"] for g in data["findings"]]
 
-    assert result == 0
+    assert result.exit_code == 0
     assert "'alpha'" in all_literals
     assert "'beta'" in all_literals
 
@@ -373,16 +346,15 @@ def test_main_multiple_paths_deduplicates_overlapping_files(
 
     # Pass the sub-directory and its parent – code.js would appear twice without dedup
     monkeypatch.setattr(cli, "setup_logger", lambda _name: logging.getLogger("tests"))
-    monkeypatch.setattr(
-        "sys.argv",
-        ["litscan", f"{sub};{tmp_path}", "--output-dir", str(out_dir)],
-    )
+    runner = CliRunner()
 
-    result = cli.main()
+    result = runner.invoke(
+        cli.main, [f"{sub};{tmp_path}", "--output-dir", str(out_dir)]
+    )
     data = json.loads((out_dir / "litscan-output.json").read_text(encoding="utf-8"))
     once_group = next(g for g in data["findings"] if g["literal"] == "'once'")
 
-    assert result == 0
+    assert result.exit_code == 0
     assert once_group["count"] == 1
 
 
@@ -393,13 +365,12 @@ def test_main_workers_flag_is_accepted(tmp_path: Path, monkeypatch) -> None:
     out_dir = tmp_path / "out"
 
     monkeypatch.setattr(cli, "setup_logger", lambda _name: logging.getLogger("tests"))
-    monkeypatch.setattr(
-        "sys.argv",
-        ["litscan", str(tmp_path), "--workers", "2", "--output-dir", str(out_dir)],
-    )
+    runner = CliRunner()
 
-    result = cli.main()
+    result = runner.invoke(
+        cli.main, [str(tmp_path), "--workers", "2", "--output-dir", str(out_dir)]
+    )
     data = json.loads((out_dir / "litscan-output.json").read_text(encoding="utf-8"))
 
-    assert result == 0
+    assert result.exit_code == 0
     assert any(g["literal"] == "'parallel'" for g in data["findings"])
