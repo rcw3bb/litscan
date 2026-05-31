@@ -5,6 +5,7 @@ description = "A small CLI tool that scans a codebase for string and numeric lit
 authors = [
     {name = "Ron Webb",email = "ron@ronella.xyz"}
 ]
+readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
     "rich (>=15.0.0,<16.0.0)",
@@ -13,7 +14,6 @@ dependencies = [
 
 [project.scripts]
 litscan = "litscan.cli:main"
-
 
 [tool.poetry]
 packages = [{include = "litscan"}]
