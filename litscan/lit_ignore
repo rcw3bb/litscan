@@ -1,0 +1,4 @@
+# Regex patterns for literals to exclude from scan results.
+# One pattern per line. Lines starting with # are comments. Empty lines are ignored.
+^0$
+^""$

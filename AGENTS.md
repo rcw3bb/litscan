@@ -6,7 +6,7 @@ litscan is a Python CLI tool (Python ^3.14, Poetry 2.2, PEP 621) that scans a co
 and numeric literals, helping developers spot hard-coded values in source files. Entry point:
 `litscan.cli:main` (run as `poetry run litscan`). No runtime dependencies; dev deps are black,
 pylint, pytest, and pytest-cov. Test: `poetry run pytest --cov=litscan tests --cov-report html`.
-Format and lint: `poetry run black litscan; poetry run pylint litscan`. Quality gates: ≥80% coverage,
+Format and lint: `poetry run black litscan; poetry run pylint litscan`. Quality gates: ≥90% coverage,
 pylint 10/10. Author: Ron Webb (ron@ronella.xyz), version 1.0.0.
 
 ## Tree

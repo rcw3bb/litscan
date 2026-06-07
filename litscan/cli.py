@@ -23,16 +23,18 @@ from rich.progress import (
     TimeElapsedColumn,
 )
 
+from logenrich import setup_logger
+
 from . import __version__
+from . import CONF_DIR
 from .reporter import write_outputs
 from .scanner import scan_file
 from .store import SessionStore
-from .util import setup_logger
 
 _VALID_FORMATS = ("json", "html", "all")
 _APP_NAME = "litscan"
 _console = Console(stderr=True)
-_logger = setup_logger(__name__)
+_logger = setup_logger(__name__, conf_dir=CONF_DIR)
 
 
 def _parse_extensions(raw: str) -> list[str]:

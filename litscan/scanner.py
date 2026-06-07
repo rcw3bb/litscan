@@ -12,8 +12,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TypedDict
 
+from . import LIT_IGNORE_PATH
+
 # Ordered alternation: triple-quoted blocks first (multiline), then single-line
-# strings, then decimal numbers, then integers.
+# strings, then decimal numbers, then integers.  String patterns appear first so
+# that any digits inside a quoted literal are consumed as part of the string
+# match and are never re-matched as standalone numeric literals.
 _PATTERN = re.compile(
     r'"""[\s\S]*?"""'
     r"|'''[\s\S]*?'''"
@@ -74,7 +78,31 @@ def _line_and_column(line_offsets: list[int], offset: int) -> tuple[int, int]:
     return line, col
 
 
-def scan_literals(source: str, file_path: Path) -> list[LiteralOccurrence]:
+def _load_ignore_patterns(path: Path) -> list[re.Pattern[str]]:
+    """Load regex ignore patterns from *path*.
+
+    Lines starting with ``#`` and blank lines are skipped. Each remaining
+    line is compiled as a :func:`re.compile` pattern.
+
+    Author: Ron Webb
+    Since: 1.1.0
+    """
+    patterns: list[re.Pattern[str]] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#"):
+            patterns.append(re.compile(stripped))
+    return patterns
+
+
+_IGNORE_PATTERNS: list[re.Pattern[str]] = _load_ignore_patterns(LIT_IGNORE_PATH)
+
+
+def scan_literals(
+    source: str,
+    file_path: Path,
+    ignore_patterns: list[re.Pattern[str]] | None = None,
+) -> list[LiteralOccurrence]:
     """Scan source text and collect string and numeric literals.
 
     Works with any language or plain text file. Detects:
@@ -83,19 +111,26 @@ def scan_literals(source: str, file_path: Path) -> list[LiteralOccurrence]:
     - Strings/text enclosed with double or single quotes (single line).
     - Decimal and integer numbers.
 
+    When *ignore_patterns* is ``None`` the module-level :data:`_IGNORE_PATTERNS`
+    (loaded from ``lit_ignore``) are used. Pass an explicit list to override.
+
     Author: Ron Webb
     Since: 1.0.0
     """
+    active = _IGNORE_PATTERNS if ignore_patterns is None else ignore_patterns
     line_offsets = _build_line_offsets(source)
     occurrences: list[LiteralOccurrence] = []
     for match in _PATTERN.finditer(source):
+        value = match.group()
+        if any(p.search(value) for p in active):
+            continue
         line, column = _line_and_column(line_offsets, match.start())
         occurrences.append(
             LiteralOccurrence(
                 file_path=file_path,
                 line=line,
                 column=column,
-                value=match.group(),
+                value=value,
             )
         )
     return occurrences
