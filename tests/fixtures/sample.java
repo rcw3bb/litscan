@@ -6,4 +6,6 @@ public class Sample {
         This is a
         Java text block
         """;
+    String created = "2023-06-01";
+    String timestamp = "10:30:00";
 }

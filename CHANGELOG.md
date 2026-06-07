@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.1.0 - 2026-06-07
+
+### Added
+
+- `lit_ignore` file bundled inside the package and seeded to `LITSCAN_CONFIG_DIR` on first run; contains regex patterns (one per line) for literals to exclude from scan results.
+- `ignore_patterns` parameter on `scan_literals()` for overriding the default ignore patterns at call time.
+- `logenrich` dependency; delegates logger setup to the library's `setup_logger`.
+- `env-dir-bootstrap` dependency; `EnvDirBootstrap` now bootstraps both `logging.ini` and `lit_ignore` into `LITSCAN_CONFIG_DIR`.
+- `CONF_DIR` and `LIT_IGNORE_PATH` constants exported from `litscan/__init__.py`.
+
+### Changed
+
+- `scan_literals()` now skips any literal whose value matches a pattern from the active ignore list.
+- `litscan/__init__.py` wires up `EnvDirBootstrap` on import so config files are always available before any module uses them.
+
+### Removed
+
+- `util.py` and its `setup_logger` helper; logging setup is now fully handled by the `logenrich` library.
+
 ## 1.0.0 - 2026-05-31
 
 ### Added
