@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.2.0 - 2026-06-09
+
+### Added
+
+- GitHub Actions CI/CD workflow (`publish.yml`) that runs tests on push to `main` and publishes to PyPI using `PYPI_TOKEN`.
+- `_mask_non_literals()` pre-scan step that replaces comments and Python docstrings with spaces before literal matching, preserving line/column offsets.
+- `_is_docstring_position()` helper that identifies whether a triple-quoted string occupies a docstring position (module-, class-, or function-level).
+- `_PYTHON_SUFFIXES` constant (`{".py", ".pyi"}`) and `_MASK_PATTERN` regex used by the masking step.
+
+### Changed
+
+- `CONF_DIR` now derived via `_bootstrapper.get_dir()` instead of `_bootstrapper.resolve("logging.ini").parent`.
+- Multiline literal truncation marker in the HTML report now embeds the full literal text in the tooltip (`title` attribute) so users can inspect it by hovering.
+- `scan_literals()` now runs source through `_mask_non_literals()` before applying the literal regex, skipping comments and docstrings.
+- Coverage quality gate raised from ≥ 80% to ≥ 90%.
+- README updated with PyPI publishing instructions, ignore-pattern documentation, and architecture diagram corrections.
+
 ## 1.1.0 - 2026-06-07
 
 ### Added

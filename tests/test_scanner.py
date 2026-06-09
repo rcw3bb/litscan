@@ -10,7 +10,9 @@ from pathlib import Path
 from litscan.scanner import (
     LiteralOccurrence,
     _build_line_offsets,
+    _is_docstring_position,
     _load_ignore_patterns,
+    _mask_non_literals,
     scan_file,
     scan_literals,
 )
@@ -49,16 +51,16 @@ def test_scan_literals_finds_decimal() -> None:
 
 
 def test_scan_literals_finds_triple_double_quoted_block() -> None:
-    """It should find multiline triple-double-quoted blocks."""
-    source = '"""line one\nline two\nline three"""'
+    """It should find multiline triple-double-quoted blocks in assignment context."""
+    source = 'x = """line one\nline two\nline three"""'
     matches = scan_literals(source, Path("sample.py"))
     values = [m.value for m in matches]
     assert '"""line one\nline two\nline three"""' in values
 
 
 def test_scan_literals_finds_triple_single_quoted_block() -> None:
-    """It should find multiline triple-single-quoted blocks."""
-    source = "'''first\nsecond'''"
+    """It should find multiline triple-single-quoted blocks in assignment context."""
+    source = "x = '''first\nsecond'''"
     matches = scan_literals(source, Path("sample.py"))
     values = [m.value for m in matches]
     assert "'''first\nsecond'''" in values
@@ -115,6 +117,13 @@ def test_scan_literals_python_fixture() -> None:
     assert '"2024/06/07"' in values
     assert "2023" not in number_values
     assert "2024" not in number_values
+    # Module docstring content must be excluded.
+    assert "'excluded_module'" not in values
+    # Inline comment content must be excluded.
+    assert "'excluded_comment'" not in values
+    assert "999" not in number_values
+    # Function docstring content must be excluded.
+    assert "'excluded_func'" not in values
 
 
 def test_scan_literals_javascript_fixture() -> None:
@@ -134,6 +143,12 @@ def test_scan_literals_javascript_fixture() -> None:
     assert '"10:30:00"' in values
     assert "2023" not in number_values
     assert "10" not in number_values
+    # Single-line comment content must be excluded.
+    assert '"excluded_line"' not in values
+    assert "400" not in number_values
+    # Block comment content must be excluded.
+    assert '"excluded_block"' not in values
+    assert "500" not in number_values
 
 
 def test_scan_literals_java_fixture() -> None:
@@ -153,6 +168,12 @@ def test_scan_literals_java_fixture() -> None:
     assert '"10:30:00"' in values
     assert "2023" not in number_values
     assert "10" not in number_values
+    # Javadoc content must be excluded.
+    assert '"excluded_doc"' not in values
+    assert "200" not in number_values
+    # Single-line comment content must be excluded.
+    assert '"excluded_line"' not in values
+    assert "300" not in number_values
 
 
 def test_build_line_offsets_single_line() -> None:
@@ -256,8 +277,8 @@ def test_scan_literals_bare_number_outside_string_is_reported() -> None:
 
 
 def test_scan_literals_date_like_bare_number_outside_string_is_reported() -> None:
-    """Numbers that look like a date but sit outside any string literal are reported."""
-    source = "# date: 2023-01-15"
+    """Numbers outside any string literal or comment must be reported."""
+    source = "year = 2023; month = 01; day = 15"
     matches = scan_literals(source, Path("sample.py"), ignore_patterns=[])
     number_values = [m.value for m in matches if m.value[0].isdigit()]
     assert "2023" in number_values
@@ -324,3 +345,184 @@ def test_load_ignore_patterns_compiles_each_line_as_regex(
     assert len(patterns) == 2
     assert patterns[0].search("0") is not None
     assert patterns[1].search('""') is not None
+
+
+# ---------------------------------------------------------------------------
+# Comment stripping
+# ---------------------------------------------------------------------------
+
+
+def test_scan_literals_skips_python_hash_comment() -> None:
+    """Literals inside a Python # comment must not be reported."""
+    source = "# comment with 'secret' and 42\nx = 'real'"
+    matches = scan_literals(source, Path("sample.py"))
+    values = [m.value for m in matches]
+    assert "'secret'" not in values
+    assert "42" not in [v for v in values if v[0].isdigit()]
+    assert "'real'" in values
+
+
+def test_scan_literals_skips_c_style_line_comment() -> None:
+    """Literals inside a // comment must not be reported."""
+    source = '// comment with "secret" and 42\nlet x = "real";'
+    matches = scan_literals(source, Path("sample.js"))
+    values = [m.value for m in matches]
+    assert '"secret"' not in values
+    assert "42" not in [v for v in values if v[0].isdigit()]
+    assert '"real"' in values
+
+
+def test_scan_literals_skips_block_comment() -> None:
+    """Literals inside a /* */ block comment must not be reported."""
+    source = '/* "ignore" 99 */\nlet x = "keep";'
+    matches = scan_literals(source, Path("sample.js"))
+    values = [m.value for m in matches]
+    assert '"ignore"' not in values
+    assert "99" not in [v for v in values if v[0].isdigit()]
+    assert '"keep"' in values
+
+
+def test_scan_literals_skips_javadoc() -> None:
+    """Literals inside a Javadoc /** */ comment must not be reported."""
+    source = '/** "documented" 42 */\nString x = "keep";'
+    matches = scan_literals(source, Path("sample.java"))
+    values = [m.value for m in matches]
+    assert '"documented"' not in values
+    assert "42" not in [v for v in values if v[0].isdigit()]
+    assert '"keep"' in values
+
+
+def test_scan_literals_url_in_string_not_misidentified_as_comment() -> None:
+    """A URL inside a string literal must not cause the rest to be masked as a comment."""
+    source = 'url = "http://example.com/path"; x = 7;'
+    matches = scan_literals(source, Path("sample.py"))
+    values = [m.value for m in matches]
+    assert '"http://example.com/path"' in values
+    assert "7" in values
+
+
+# ---------------------------------------------------------------------------
+# Python docstring detection
+# ---------------------------------------------------------------------------
+
+
+def test_scan_literals_skips_python_module_docstring() -> None:
+    """Literals inside a Python module docstring must not be reported."""
+    source = '"""Module docs with \'secret\' and 42."""\nx = 1'
+    matches = scan_literals(source, Path("sample.py"))
+    values = [m.value for m in matches]
+    assert "42" not in [v for v in values if v[0].isdigit()]
+    assert "'secret'" not in values
+    assert "1" in values
+
+
+def test_scan_literals_skips_python_function_docstring() -> None:
+    """Literals inside a Python function docstring must not be reported."""
+    source = 'def foo():\n    """Docs with \'secret\' and 42."""\n    return "real"'
+    matches = scan_literals(source, Path("sample.py"))
+    values = [m.value for m in matches]
+    assert "42" not in [v for v in values if v[0].isdigit()]
+    assert "'secret'" not in values
+    assert '"real"' in values
+
+
+def test_scan_literals_skips_python_class_docstring() -> None:
+    """Literals inside a Python class docstring must not be reported."""
+    source = 'class Foo:\n    """Class docs with 99."""\n    x = "keep"'
+    matches = scan_literals(source, Path("sample.py"))
+    values = [m.value for m in matches]
+    assert "99" not in [v for v in values if v[0].isdigit()]
+    assert '"keep"' in values
+
+
+def test_scan_literals_triple_quoted_assignment_not_skipped() -> None:
+    """A triple-quoted string in an assignment must not be treated as a docstring."""
+    source = 'x = """real value"""'
+    matches = scan_literals(source, Path("sample.py"))
+    values = [m.value for m in matches]
+    assert '"""real value"""' in values
+
+
+def test_scan_literals_java_triple_quoted_not_skipped() -> None:
+    """Java text blocks (triple-quoted) must never be treated as docstrings."""
+    source = 'String s = """\n    content\n    """;'
+    matches = scan_literals(source, Path("sample.java"))
+    values = [m.value for m in matches]
+    assert any(v.startswith('"""') for v in values)
+
+
+# ---------------------------------------------------------------------------
+# _is_docstring_position unit tests
+# ---------------------------------------------------------------------------
+
+
+def test_is_docstring_position_module_level_true() -> None:
+    """A triple-quoted string at the very start of source is a module docstring."""
+    source = '"""docstring"""'
+    assert _is_docstring_position(source, 0) is True
+
+
+def test_is_docstring_position_after_def_true() -> None:
+    """A triple-quoted string right after def ....: is a function docstring."""
+    source = 'def foo():\n    """docstring"""'
+    start = source.index('"""')
+    assert _is_docstring_position(source, start) is True
+
+
+def test_is_docstring_position_after_class_true() -> None:
+    """A triple-quoted string right after class ...: is a class docstring."""
+    source = 'class Bar:\n    """docstring"""'
+    start = source.index('"""')
+    assert _is_docstring_position(source, start) is True
+
+
+def test_is_docstring_position_assignment_false() -> None:
+    """A triple-quoted string on the right of an assignment is not a docstring."""
+    source = 'x = """value"""'
+    start = source.index('"""')
+    assert _is_docstring_position(source, start) is False
+
+
+def test_is_docstring_position_dict_value_false() -> None:
+    """A triple-quoted value in a dict literal is not a docstring."""
+    source = 'd = {"key": """value"""}'
+    start = source.index('"""')
+    assert _is_docstring_position(source, start) is False
+
+
+# ---------------------------------------------------------------------------
+# _mask_non_literals unit tests
+# ---------------------------------------------------------------------------
+
+
+def test_mask_non_literals_masks_hash_comment() -> None:
+    """_mask_non_literals should replace # comment content with spaces."""
+    source = "# secret\nx = 1"
+    masked = _mask_non_literals(source, ".py")
+    assert "secret" not in masked
+    assert masked.count("\n") == source.count("\n")
+    assert len(masked) == len(source)
+
+
+def test_mask_non_literals_masks_block_comment() -> None:
+    """_mask_non_literals should replace /* */ block comment content with spaces."""
+    source = "/* secret 99 */\nx = 1;"
+    masked = _mask_non_literals(source, ".java")
+    assert "secret" not in masked
+    assert "99" not in masked
+    assert masked.count("\n") == source.count("\n")
+
+
+def test_mask_non_literals_preserves_length_and_newlines() -> None:
+    """_mask_non_literals must preserve source length and newline positions."""
+    source = "# comment\ncode = 42\n"
+    masked = _mask_non_literals(source, ".py")
+    assert len(masked) == len(source)
+    assert masked.count("\n") == source.count("\n")
+
+
+def test_mask_non_literals_non_python_triple_quote_not_masked() -> None:
+    """Triple-quoted strings in non-Python files must never be masked as docstrings."""
+    source = '"""\ndocstring-like\n"""'
+    masked = _mask_non_literals(source, ".java")
+    assert '"""' in masked

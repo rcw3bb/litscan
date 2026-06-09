@@ -27,6 +27,23 @@ _PATTERN = re.compile(
     r"|\b\d+\b",
 )
 
+# File suffixes treated as Python source (enables docstring detection).
+_PYTHON_SUFFIXES: frozenset[str] = frozenset({".py", ".pyi"})
+
+# Pattern used during the pre-scan masking step.  Comments are listed before
+# string alternatives so that quote characters appearing inside comment text
+# are consumed by the comment pattern first and are never matched as string
+# delimiters.
+_MASK_PATTERN = re.compile(
+    r"#[^\n]*"
+    r"|//[^\n]*"
+    r"|/\*[\s\S]*?\*/"
+    r'|"""[\s\S]*?"""'
+    r"|'''[\s\S]*?'''"
+    r'|"(?:[^"\\\n]|\\.)*"'
+    r"|'(?:[^'\\\n]|\\.)*'",
+)
+
 
 @dataclass(frozen=True)
 class LiteralOccurrence:
@@ -98,6 +115,69 @@ def _load_ignore_patterns(path: Path) -> list[re.Pattern[str]]:
 _IGNORE_PATTERNS: list[re.Pattern[str]] = _load_ignore_patterns(LIT_IGNORE_PATH)
 
 
+def _is_docstring_position(source: str, match_start: int) -> bool:
+    """Return ``True`` when a triple-quoted string is in a docstring position.
+
+    A string is considered a docstring when it starts at the beginning of its
+    line (only whitespace before it on that line) **and** either:
+
+    * nothing except blank lines or ``#`` comments precedes it in the file
+      (module-level docstring), or
+    * the previous non-blank, non-comment line ends with ``:`` (function,
+      class, ``if``, ``for`` … block opener).
+
+    Author: Ron Webb
+    Since: 1.1.0
+    """
+    # The triple-quote must be the first non-whitespace token on its line.
+    line_start = source.rfind("\n", 0, match_start) + 1
+    if source[line_start:match_start].strip():
+        return False
+
+    # Examine lines above the current line.
+    before = source[:line_start]
+    if not before.strip():
+        return True  # nothing meaningful above → module docstring
+
+    for line in reversed(before.splitlines()):
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue  # skip blank lines and # comments
+        return stripped.endswith(":")
+
+    # Only blank lines / comments above → module docstring.
+    return True
+
+
+def _mask_non_literals(source: str, suffix: str) -> str:
+    """Return *source* with comment and docstring regions replaced by spaces.
+
+    Replaces every non-newline character in each masked region with a space so
+    that character offsets (and therefore line/column numbers) remain identical
+    to the original source.  Masked regions are:
+
+    * Single-line comments (``#…`` and ``//…``).
+    * Block comments including Javadoc (``/* … */``).
+    * For ``.py`` / ``.pyi`` files: triple-quoted strings that occupy a
+      docstring position (see :func:`_is_docstring_position`).
+
+    Author: Ron Webb
+    Since: 1.1.0
+    """
+    is_python = suffix in _PYTHON_SUFFIXES
+
+    def _replace(match: re.Match[str]) -> str:
+        text = match.group()
+        if text.startswith(("#", "//", "/*")):
+            return "".join(" " if c != "\n" else c for c in text)
+        if is_python and text.startswith(('"""', "'''")):
+            if _is_docstring_position(source, match.start()):
+                return "".join(" " if c != "\n" else c for c in text)
+        return text
+
+    return _MASK_PATTERN.sub(_replace, source)
+
+
 def scan_literals(
     source: str,
     file_path: Path,
@@ -118,9 +198,11 @@ def scan_literals(
     Since: 1.0.0
     """
     active = _IGNORE_PATTERNS if ignore_patterns is None else ignore_patterns
+    suffix = file_path.suffix.lower()
+    effective_source = _mask_non_literals(source, suffix)
     line_offsets = _build_line_offsets(source)
     occurrences: list[LiteralOccurrence] = []
-    for match in _PATTERN.finditer(source):
+    for match in _PATTERN.finditer(effective_source):
         value = match.group()
         if any(p.search(value) for p in active):
             continue

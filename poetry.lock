@@ -228,14 +228,14 @@ profile = ["gprof2dot (>=2022.7.29)"]
 
 [[package]]
 name = "env-dir-bootstrap"
-version = "1.0.0"
+version = "1.1.0"
 description = "A Python package that provides a simple way to bootstrap a directory environment variable with the content coming from the distribution package."
 optional = false
 python-versions = ">=3.14"
 groups = ["main"]
 files = [
-    {file = "env_dir_bootstrap-1.0.0-py3-none-any.whl", hash = "sha256:600aeabdd507056edd897b7e64a4f718c7d34e91ff8a27b06a36ec8eb8a49664"},
-    {file = "env_dir_bootstrap-1.0.0.tar.gz", hash = "sha256:b704a27d6acf9fe173f001bc93af8dc5d9beb7bf9ca00c885d13a3c64bfb4091"},
+    {file = "env_dir_bootstrap-1.1.0-py3-none-any.whl", hash = "sha256:5b1cd2dd3e69a8947817fe4853f20c256374573f87d0c3b3d8ca746c874c48c6"},
+    {file = "env_dir_bootstrap-1.1.0.tar.gz", hash = "sha256:5e67bd625789f4d7d1214c13ea032ecaa9f8d6d418df0e58f20124a06814984d"},
 ]
 
 [package.dependencies]
