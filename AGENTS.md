@@ -18,7 +18,6 @@ pylint 10/10. Author: Ron Webb (ron@ronella.xyz), version 1.0.0.
 - litscan/scanner.py — literal scanning logic
 - litscan/store.py — SQLite session store (`SessionStore`); occurrences persisted per UUID, deleted after report
 - litscan/reporter.py — report generation (JSON + HTML output); exposes `write_outputs`
-- litscan/util.py — shared utilities; defines `setup_logger` (must match canonical gist)
 - tests/ — pytest suite mirroring litscan/ structure
 - tests/fixtures/ — sample source files used in tests (java, js, py)
 - tests/test_store.py — tests for store module
@@ -31,7 +30,7 @@ pylint 10/10. Author: Ron Webb (ron@ronella.xyz), version 1.0.0.
 ## Rules
 
 - Before adding a module, place it inside litscan/; mirror its path under tests/ as test_*.py.
-- Before changing logging setup, verify logging.ini and `setup_logger` in util.py each match their canonical gists exactly.
+- Before changing logging setup, verify logging.ini matches its canonical gist; `setup_logger` is provided by the `logenrich` external library — do not re-implement it in the package.
 - Never modify pyproject.toml version, .pylintrc, or poetry.lock without explicit approval.
 - When the version is updated, keep it in sync across all three locations: `pyproject.toml` (`version` field), `README.md` (version badge or reference), and `litscan/__init__.py` (`__version__`).
 - Use relative imports within litscan/; add type hints to all function arguments and return values.

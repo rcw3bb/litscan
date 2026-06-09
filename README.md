@@ -1,4 +1,4 @@
-# litscan 1.1.0
+# litscan 1.2.0
 
 > A small CLI tool that scans a codebase for string and numeric literals, helping you quickly spot hard-coded values in source files.
 
@@ -81,7 +81,11 @@ litscan src/main/java --ext java --format all --output-dir reports
 
 | Environment variable | Description |
 |----------------------|-------------|
-| `LITSCAN_CONFIG_DIR` | Directory where `logging.ini` is seeded and read from. When unset, the bundled `logging.ini` inside the package is used directly. |
+| `LITSCAN_CONFIG_DIR` | Directory where `logging.ini` and `lit_ignore` are seeded and read from. When unset, the bundled copies inside the package are used directly. |
+
+### Ignore patterns
+
+The `lit_ignore` file (seeded into `LITSCAN_CONFIG_DIR` on first run) contains one regex pattern per line. Any literal whose value matches a pattern is excluded from scan results. Edit the file to suppress noise such as common stop-words or numeric constants you do not care about.
 
 ## Development
 
@@ -99,10 +103,11 @@ poetry install
 
 ```mermaid
 flowchart TD
-    CLI["cli.py\n(entry point)"] --> util["setup_logger()\nutil.py"]
+    CLI["cli.py\n(entry point)"] --> logenrich["setup_logger()\nlogenrich"]
     CLI --> discover["discover_files()"]
     discover --> concurrent["ThreadPoolExecutor\n(parallel scan)"]
     concurrent --> scan["scan_file()\nscanner.py"]
+    scan --> litignore["lit_ignore\n(exclude patterns)"]
     scan --> store["SessionStore\nstore.py (SQLite)"]
     store --> report["write_outputs()\nreporter.py"]
     report --> JSON["JSON report"]
@@ -115,7 +120,7 @@ flowchart TD
 | `scanner.py` | Regex-based literal extraction; `LiteralOccurrence` / `LiteralGroup` types |
 | `store.py` | `SessionStore` — thread-safe SQLite scratch store; one UUID per scan run |
 | `reporter.py` | `write_outputs()` — renders JSON and/or HTML reports |
-| `util.py` | `setup_logger()` — logging config seeded from `logging.ini` |
+| `logenrich` | External library that provides `setup_logger()` — logging config seeded from `logging.ini` |
 
 ### Test with coverage
 
@@ -131,8 +136,39 @@ poetry run black litscan; poetry run pylint litscan
 
 ### Quality gates
 
-- Coverage ≥ 80%
+- Coverage ≥ 90%
 - Pylint score 10/10
+
+### Example
+
+Scan the test fixtures and produce both JSON and HTML reports:
+
+```powershell
+poetry run litscan tests\fixtures --format all
+```
+
+## Publishing to PyPI
+
+### Prerequisites
+
+- A [PyPI](https://pypi.org/) account with an API token.
+
+### Configure the token
+
+```bash
+poetry config pypi-token.pypi <your-token>
+```
+
+### Build and publish
+
+```bash
+poetry publish --build
+```
+
+This builds the source distribution and wheel, then uploads them to PyPI in one step.
+
+> **Note:** PyPI releases are immutable. Once a version is published, it cannot be overwritten.  
+> To fix a mistake, yank the release via the PyPI web UI and publish a new version.
 
 ## [Changelog](CHANGELOG.md)
 

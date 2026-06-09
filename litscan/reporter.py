@@ -115,11 +115,11 @@ def _write_json(groups: list[LiteralGroup], path: Path, run_date: str) -> None:
     path.write_text(json.dumps(report, indent=2), encoding="utf-8")
 
 
-_TRUNCATED_MARKER = '<span class="truncated" title="Multiline literal \u2014 only first line shown">\u2026</span>'
-
-
 def _literal_display(literal: str) -> str:
     """Return HTML for the first line of *literal* with a truncation marker when multiline.
+
+    The truncation marker's tooltip shows the full literal text so users can inspect
+    multiline values by hovering over the ellipsis.
 
     Author: Ron Webb
     Since: 1.0.0
@@ -127,7 +127,8 @@ def _literal_display(literal: str) -> str:
     first_line, _, rest = literal.partition("\n")
     display = _html.escape(first_line, quote=False)
     if rest:
-        display += _TRUNCATED_MARKER
+        full_text = _html.escape(literal, quote=True)
+        display += f'<span class="truncated" title="{full_text}">\u2026</span>'
     return display
 
 

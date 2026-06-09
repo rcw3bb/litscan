@@ -1,4 +1,8 @@
+/**
+ * Javadoc with "excluded_doc" and 200.
+ */
 public class Sample {
+    // single-line comment with "excluded_line" and 300
     String name = "Charlie";
     int count = 99;
     double pi = 3.14159;
