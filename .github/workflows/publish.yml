@@ -29,6 +29,9 @@ jobs:
           virtualenvs-create: true
           virtualenvs-in-project: true
 
+      - name: Lock dependencies
+        run: poetry lock
+
       - name: Install dependencies
         run: poetry sync
 
