@@ -1,4 +1,4 @@
-# litscan 1.2.0
+# litscan 1.3.0
 
 > A small CLI tool that scans a codebase for string and numeric literals, helping you quickly spot hard-coded values in source files.
 
@@ -50,6 +50,7 @@ Results are grouped by unique literal value and sorted by occurrence count (high
 | `--format <fmt>` | `json` | Output format: `json`, `html`, or `all` |
 | `--workers <n>` | `min(32, cpu_count + 4)` | Number of parallel worker threads used during scanning |
 | `--db <path>` | `<system-temp>/litscan.db` | Path to the SQLite scratch database that stores occurrences during a scan run. Session records are removed after the report is written. |
+| `--functions-only` | _(off)_ | Scan only literals that appear inside function or method implementations. Supported for Python and brace-style languages (Java, JS, TS, C/C++, C#, Go, Rust, Kotlin, Swift, Scala, Groovy). |
 
 ### Examples
 
@@ -75,6 +76,12 @@ Scan a Java source tree with a custom output name:
 
 ```powershell
 litscan src/main/java --ext java --format all --output-dir reports
+```
+
+Scan only literals inside functions and methods:
+
+```powershell
+litscan src --functions-only
 ```
 
 ## Configuration

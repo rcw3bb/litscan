@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.3.0 - 2026-06-11
+
+### Added
+
+- `--functions-only` CLI flag that restricts literal scanning to literals found inside function or method implementations.
+- `_get_python_function_regions()` — uses `ast` to locate `FunctionDef` / `AsyncFunctionDef` nodes and return their character ranges in Python source.
+- `_get_brace_style_function_regions()` — brace-matching parser that identifies function/method bodies in Java, JS, TS, C/C++, C#, Go, Rust, Kotlin, Swift, Scala, and Groovy source files.
+- `_mask_for_structure()` — strips comments and string literals (preserving newlines) before structural brace analysis.
+- `_BRACE_STYLE_SUFFIXES` and `_CONTROL_KW` constants in `scanner.py` to enumerate supported brace-style file types and exclude control-flow blocks.
+- New test fixtures: `tests/fixtures/func_sample.py`, `tests/fixtures/func_sample.js`, `tests/fixtures/FuncSample.java`.
+
+### Changed
+
+- `_scan_and_store()` task tuple extended from 3-tuple to 4-tuple to carry the `functions_only` flag through to `scan_file()`.
+- `_run_concurrent_scan()` and `main()` updated to accept and propagate the `functions_only` parameter.
+- `scan_file()` passes `functions_only` down to `scan_literals()`.
+- README updated with `--functions-only` option and example.
+
 ## 1.2.0 - 2026-06-09
 
 ### Added
