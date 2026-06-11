@@ -1,4 +1,4 @@
-# litscan 1.3.0
+# litscan 1.3.1
 
 > A small CLI tool that scans a codebase for string and numeric literals, helping you quickly spot hard-coded values in source files.
 
@@ -50,7 +50,7 @@ Results are grouped by unique literal value and sorted by occurrence count (high
 | `--format <fmt>` | `json` | Output format: `json`, `html`, or `all` |
 | `--workers <n>` | `min(32, cpu_count + 4)` | Number of parallel worker threads used during scanning |
 | `--db <path>` | `<system-temp>/litscan.db` | Path to the SQLite scratch database that stores occurrences during a scan run. Session records are removed after the report is written. |
-| `--functions-only` | _(off)_ | Scan only literals that appear inside function or method implementations. Supported for Python and brace-style languages (Java, JS, TS, C/C++, C#, Go, Rust, Kotlin, Swift, Scala, Groovy). |
+| `--functions-only` | _(off)_ | Scan only literals that appear inside function or method implementations. Supported for Python and brace-style languages (Java, JS, JSX, TS, TSX, C/C++, C#, Go, Rust, Kotlin, Swift, Scala, Groovy, GS, GSX). |
 
 ### Examples
 
@@ -178,6 +178,10 @@ This builds the source distribution and wheel, then uploads them to PyPI in one 
 > To fix a mistake, yank the release via the PyPI web UI and publish a new version.
 
 ## [Changelog](CHANGELOG.md)
+
+## License
+
+[MIT](LICENSE)
 
 ## Author
 

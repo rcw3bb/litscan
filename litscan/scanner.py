@@ -50,6 +50,8 @@ _BRACE_STYLE_SUFFIXES: frozenset[str] = frozenset(
         ".swift",
         ".scala",
         ".groovy",
+        ".gs",
+        ".gsx",
     }
 )
 

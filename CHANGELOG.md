@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.3.1 - 2026-06-11
+
+### Changed
+
+- `_BRACE_STYLE_SUFFIXES` in `scanner.py` extended with `.gs` and `.gsx` so that JSX/TSX files are recognised as brace-style sources for `--functions-only` scanning.
+- README `## License` section added linking to the MIT `LICENSE` file.
+
 ## 1.3.0 - 2026-06-11
 
 ### Added
