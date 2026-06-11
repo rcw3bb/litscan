@@ -6,7 +6,7 @@ Since: 1.0.0
 
 from env_dir_bootstrap import EnvDirBootstrap
 
-__version__ = "1.3.0"
+__version__ = "1.3.1"
 
 _bootstrapper = EnvDirBootstrap(
     env_var="LITSCAN_CONFIG_DIR",
