@@ -10,9 +10,13 @@ from pathlib import Path
 from litscan.scanner import (
     LiteralOccurrence,
     _build_line_offsets,
+    _get_brace_function_regions,
+    _get_python_function_regions,
     _is_docstring_position,
     _load_ignore_patterns,
+    _mask_for_structure,
     _mask_non_literals,
+    _mask_outside_regions,
     scan_file,
     scan_literals,
 )
@@ -526,3 +530,270 @@ def test_mask_non_literals_non_python_triple_quote_not_masked() -> None:
     source = '"""\ndocstring-like\n"""'
     masked = _mask_non_literals(source, ".java")
     assert '"""' in masked
+
+
+# ---------------------------------------------------------------------------
+# _mask_for_structure unit tests
+# ---------------------------------------------------------------------------
+
+
+def test_mask_for_structure_replaces_string_content() -> None:
+    """_mask_for_structure should replace string literal content with spaces."""
+    source = 'x = "hello"; y = 1;'
+    masked = _mask_for_structure(source)
+    assert "hello" not in masked
+    assert len(masked) == len(source)
+
+
+def test_mask_for_structure_replaces_comment_content() -> None:
+    """_mask_for_structure should replace comment content with spaces."""
+    source = "// secret\nx = 1;"
+    masked = _mask_for_structure(source)
+    assert "secret" not in masked
+    assert masked.count("\n") == source.count("\n")
+
+
+def test_mask_for_structure_preserves_length_and_newlines() -> None:
+    """_mask_for_structure must not change source length or newline positions."""
+    source = '/* block */\nlet x = "value";\n'
+    masked = _mask_for_structure(source)
+    assert len(masked) == len(source)
+    assert masked.count("\n") == source.count("\n")
+
+
+# ---------------------------------------------------------------------------
+# _get_python_function_regions unit tests
+# ---------------------------------------------------------------------------
+
+
+def test_get_python_function_regions_detects_top_level_function() -> None:
+    """It should return a region spanning the full function definition."""
+    source = 'def foo():\n    x = "hello"\n'
+    from litscan.scanner import _build_line_offsets
+
+    offsets = _build_line_offsets(source)
+    regions = _get_python_function_regions(source, offsets)
+    assert len(regions) == 1
+    start, end = regions[0]
+    assert source[start:end].startswith("def foo")
+    assert '"hello"' in source[start:end]
+
+
+def test_get_python_function_regions_detects_class_method() -> None:
+    """It should detect a method inside a class."""
+    source = "class C:\n    def method(self):\n        x = 1\n"
+    from litscan.scanner import _build_line_offsets
+
+    offsets = _build_line_offsets(source)
+    regions = _get_python_function_regions(source, offsets)
+    assert any("def method" in source[s:e] for s, e in regions)
+
+
+def test_get_python_function_regions_excludes_module_level() -> None:
+    """Module-level code must not fall inside any returned region."""
+    source = 'MODULE = "top"\ndef foo():\n    x = "inside"\n'
+    from litscan.scanner import _build_line_offsets
+
+    offsets = _build_line_offsets(source)
+    regions = _get_python_function_regions(source, offsets)
+    all_covered = set()
+    for s, e in regions:
+        all_covered.update(range(s, e))
+    module_offset = source.index('"top"')
+    assert module_offset not in all_covered
+
+
+def test_get_python_function_regions_syntax_error_returns_empty() -> None:
+    """It should return an empty list when the source cannot be parsed."""
+    from litscan.scanner import _build_line_offsets
+
+    offsets = _build_line_offsets("def broken(:\n")
+    assert _get_python_function_regions("def broken(:\n", offsets) == []
+
+
+# ---------------------------------------------------------------------------
+# _get_brace_function_regions unit tests
+# ---------------------------------------------------------------------------
+
+
+def test_get_brace_function_regions_detects_js_function() -> None:
+    """It should detect a regular JS function body."""
+    source = 'function foo() {\n    const x = "hello";\n}\n'
+    regions = _get_brace_function_regions(source)
+    assert len(regions) >= 1
+    combined = "".join(source[s:e] for s, e in regions)
+    assert '"hello"' in combined
+
+
+def test_get_brace_function_regions_detects_arrow_function() -> None:
+    """It should detect an arrow function body."""
+    source = 'const fn = () => {\n    const x = "arrow";\n};\n'
+    regions = _get_brace_function_regions(source)
+    combined = "".join(source[s:e] for s, e in regions)
+    assert '"arrow"' in combined
+
+
+def test_get_brace_function_regions_excludes_if_block() -> None:
+    """An if-block must not be returned as a function region on its own."""
+    source = 'if (cond) {\n    x = "inside";\n}\n'
+    regions = _get_brace_function_regions(source)
+    assert regions == []
+
+
+def test_get_brace_function_regions_excludes_module_level_java() -> None:
+    """Class-level field assignments must not fall inside any detected region."""
+    source = (
+        "public class C {\n"
+        '    String field = "class_level";\n'
+        "    public void m() {\n"
+        '        String x = "method_level";\n'
+        "    }\n"
+        "}\n"
+    )
+    regions = _get_brace_function_regions(source)
+    combined = "".join(source[s:e] for s, e in regions)
+    assert '"method_level"' in combined
+    assert '"class_level"' not in combined
+
+
+# ---------------------------------------------------------------------------
+# _mask_outside_regions unit tests
+# ---------------------------------------------------------------------------
+
+
+def test_mask_outside_regions_keeps_region_content() -> None:
+    """Characters inside the given region must be preserved."""
+    source = "AAABBBCCC"
+    masked = _mask_outside_regions(source, [(3, 6)])
+    assert masked[3:6] == "BBB"
+
+
+def test_mask_outside_regions_replaces_outside_with_spaces() -> None:
+    """Characters outside the region must be replaced by spaces."""
+    source = "AAABBBCCC"
+    masked = _mask_outside_regions(source, [(3, 6)])
+    assert masked[:3] == "   "
+    assert masked[6:] == "   "
+
+
+def test_mask_outside_regions_preserves_newlines() -> None:
+    """Newlines outside regions must be preserved."""
+    source = "A\nB\nC\n"
+    masked = _mask_outside_regions(source, [(2, 3)])
+    assert masked.count("\n") == source.count("\n")
+
+
+def test_mask_outside_regions_empty_regions_masks_all() -> None:
+    """When regions is empty the entire non-newline content must be masked."""
+    source = "hello\nworld"
+    masked = _mask_outside_regions(source, [])
+    assert all(c in (" ", "\n") for c in masked)
+    assert masked.count("\n") == source.count("\n")
+
+
+def test_mask_outside_regions_merges_overlapping() -> None:
+    """Overlapping regions must be merged and their union preserved."""
+    source = "ABCDE"
+    masked = _mask_outside_regions(source, [(1, 3), (2, 5)])
+    # merged → (1, 5) → 'BCDE' kept, 'A' masked
+    assert masked[0] == " "
+    assert masked[1:5] == "BCDE"
+
+
+# ---------------------------------------------------------------------------
+# scan_literals functions_only – Python
+# ---------------------------------------------------------------------------
+
+
+def test_scan_literals_functions_only_excludes_module_level_python() -> None:
+    """With functions_only, module-level literals must not be reported."""
+    source = 'MODULE = "top"\ndef foo():\n    x = "inside"\n'
+    matches = scan_literals(source, Path("f.py"), functions_only=True)
+    values = [m.value for m in matches]
+    assert '"top"' not in values
+    assert '"inside"' in values
+
+
+def test_scan_literals_functions_only_includes_method_python() -> None:
+    """With functions_only, literals inside a class method must be reported."""
+    source = "class C:\n    cvar = 1\n    def method(self):\n        x = 2\n"
+    matches = scan_literals(
+        source, Path("f.py"), ignore_patterns=[], functions_only=True
+    )
+    values = [m.value for m in matches]
+    assert "2" in values
+    assert "1" not in values
+
+
+def test_scan_literals_functions_only_python_fixture() -> None:
+    """With functions_only, only literals inside functions in the fixture are reported."""
+    fixture = Path(__file__).parent / "fixtures" / "func_sample.py"
+    source = fixture.read_text(encoding="utf-8")
+    matches = scan_literals(source, fixture, functions_only=True)
+    values = [m.value for m in matches]
+    # Function-body literals must be present.
+    assert '"func_string"' in values
+    assert '"method_string"' in values
+    assert '"async_string"' in values
+    # Module-level literals must be absent.
+    assert '"module_string"' not in values
+    assert '"class_var"' not in values
+
+
+# ---------------------------------------------------------------------------
+# scan_literals functions_only – JavaScript
+# ---------------------------------------------------------------------------
+
+
+def test_scan_literals_functions_only_excludes_module_level_js() -> None:
+    """With functions_only, top-level JS literals must not be reported."""
+    source = 'const A = "top";\nfunction foo() {\n    const x = "inside";\n}\n'
+    matches = scan_literals(source, Path("f.js"), functions_only=True)
+    values = [m.value for m in matches]
+    assert '"top"' not in values
+    assert '"inside"' in values
+
+
+def test_scan_literals_functions_only_js_fixture() -> None:
+    """With functions_only, only literals inside functions in the JS fixture are reported."""
+    fixture = Path(__file__).parent / "fixtures" / "func_sample.js"
+    source = fixture.read_text(encoding="utf-8")
+    matches = scan_literals(source, fixture, functions_only=True)
+    values = [m.value for m in matches]
+    assert '"func_string"' in values
+    assert '"arrow_string"' in values
+    assert '"control_inside"' in values
+    assert '"module_string"' not in values
+
+
+# ---------------------------------------------------------------------------
+# scan_literals functions_only – Java
+# ---------------------------------------------------------------------------
+
+
+def test_scan_literals_functions_only_java_fixture() -> None:
+    """With functions_only, only literals inside methods in the Java fixture are reported."""
+    fixture = Path(__file__).parent / "fixtures" / "FuncSample.java"
+    source = fixture.read_text(encoding="utf-8")
+    matches = scan_literals(source, fixture, functions_only=True)
+    values = [m.value for m in matches]
+    assert '"method_string"' in values
+    assert '"another_method"' in values
+    assert '"class_field"' not in values
+
+
+# ---------------------------------------------------------------------------
+# scan_file functions_only
+# ---------------------------------------------------------------------------
+
+
+def test_scan_file_functions_only(tmp_path: Path) -> None:
+    """scan_file with functions_only=True must only return in-function literals."""
+    sample = tmp_path / "code.py"
+    sample.write_text(
+        'MODULE = "top"\ndef foo():\n    x = "inside"\n', encoding="utf-8"
+    )
+    occurrences = scan_file(sample, functions_only=True)
+    values = [o.value for o in occurrences]
+    assert '"inside"' in values
+    assert '"top"' not in values

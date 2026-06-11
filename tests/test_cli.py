@@ -324,9 +324,7 @@ def test_main_multiple_comma_separated_paths(tmp_path: Path, monkeypatch) -> Non
     monkeypatch.setattr(cli, "setup_logger", lambda _name: logging.getLogger("tests"))
     runner = CliRunner()
 
-    result = runner.invoke(
-        cli.main, [f"{dir_a};{dir_b}", "--output-dir", str(out_dir)]
-    )
+    result = runner.invoke(cli.main, [f"{dir_a};{dir_b}", "--output-dir", str(out_dir)])
     data = json.loads((out_dir / "litscan-output.json").read_text(encoding="utf-8"))
     all_literals = [g["literal"] for g in data["findings"]]
 
@@ -374,3 +372,28 @@ def test_main_workers_flag_is_accepted(tmp_path: Path, monkeypatch) -> None:
 
     assert result.exit_code == 0
     assert any(g["literal"] == "'parallel'" for g in data["findings"])
+
+
+def test_main_functions_only_flag_excludes_module_level(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """With --functions-only, module-level literals must not appear in the report."""
+    sample_file = tmp_path / "code.py"
+    sample_file.write_text(
+        'MODULE = "top"\ndef foo():\n    x = "inside"\n', encoding="utf-8"
+    )
+    out_dir = tmp_path / "out"
+
+    monkeypatch.setattr(cli, "setup_logger", lambda _name: logging.getLogger("tests"))
+    runner = CliRunner()
+
+    result = runner.invoke(
+        cli.main,
+        [str(tmp_path), "--functions-only", "--output-dir", str(out_dir)],
+    )
+    data = json.loads((out_dir / "litscan-output.json").read_text(encoding="utf-8"))
+    all_literals = [g["literal"] for g in data["findings"]]
+
+    assert result.exit_code == 0
+    assert '"inside"' in all_literals
+    assert '"top"' not in all_literals

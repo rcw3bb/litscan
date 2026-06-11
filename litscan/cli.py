@@ -72,17 +72,19 @@ def _parse_paths(raw: str) -> list[Path]:
     return result
 
 
-def _scan_and_store(task: tuple[Path, SessionStore, str]) -> None:
+def _scan_and_store(task: tuple[Path, SessionStore, str, bool]) -> None:
     """Scan one file and write its occurrences to the session store.
 
-    Accepts a 3-tuple so the function can be passed directly to
+    Accepts a 4-tuple so the function can be passed directly to
     :meth:`concurrent.futures.Executor.map` without a closure.
 
     Author: Ron Webb
     Since: 1.0.0
     """
-    file_path, store, session_id = task
-    store.insert_occurrences(session_id, scan_file(file_path))
+    file_path, store, session_id, functions_only = task
+    store.insert_occurrences(
+        session_id, scan_file(file_path, functions_only=functions_only)
+    )
 
 
 def discover_files(path: Path, extensions: list[str]) -> list[Path]:
@@ -113,6 +115,7 @@ def _run_concurrent_scan(
     store: SessionStore,
     session_id: str,
     workers: int,
+    functions_only: bool = False,
 ) -> None:
     """Scan *files* concurrently and store results under *session_id*.
 
@@ -133,7 +136,9 @@ def _run_concurrent_scan(
         task = progress.add_task("[cyan]Scanning\u2026", total=len(files))
         with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
             futures = {
-                executor.submit(_scan_and_store, (f, store, session_id)): f
+                executor.submit(
+                    _scan_and_store, (f, store, session_id, functions_only)
+                ): f
                 for f in files
             }
             for future in concurrent.futures.as_completed(futures):
@@ -200,6 +205,17 @@ def _run_concurrent_scan(
         "Session records are removed after the report is written."
     ),
 )
+@click.option(
+    "--functions-only",
+    "functions_only",
+    is_flag=True,
+    default=False,
+    help=(
+        "Scan only literals that appear inside function or method implementations. "
+        "Supported for Python and brace-style languages "
+        "(Java, JS, TS, C/C++, C#, Go, Rust, Kotlin, Swift, Scala, Groovy)."
+    ),
+)
 def main(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
     path: str,
     ext: str,
@@ -208,6 +224,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-positional-arguments,to
     fmt: str,
     workers: int,
     db_path: Path,
+    functions_only: bool,
 ) -> None:
     """Scan source files for string and numeric literals.
 
@@ -239,7 +256,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-positional-arguments,to
     session_id = str(uuid.uuid4())
     store = SessionStore(db_path)
     try:
-        _run_concurrent_scan(files, store, session_id, workers)
+        _run_concurrent_scan(files, store, session_id, workers, functions_only)
         groups = store.read_groups(session_id)
         stem = Path(output).stem
         written = write_outputs(groups, output_dir, stem, fmt)
