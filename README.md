@@ -1,4 +1,4 @@
-# litscan 1.3.1
+# litscan 1.4.0
 
 > A small CLI tool that scans a codebase for string and numeric literals, helping you quickly spot hard-coded values in source files.
 
@@ -51,6 +51,7 @@ Results are grouped by unique literal value and sorted by occurrence count (high
 | `--workers <n>` | `min(32, cpu_count + 4)` | Number of parallel worker threads used during scanning |
 | `--db <path>` | `<system-temp>/litscan.db` | Path to the SQLite scratch database that stores occurrences during a scan run. Session records are removed after the report is written. |
 | `--functions-only` | _(off)_ | Scan only literals that appear inside function or method implementations. Supported for Python and brace-style languages (Java, JS, JSX, TS, TSX, C/C++, C#, Go, Rust, Kotlin, Swift, Scala, Groovy, GS, GSX). |
+| `--version` | | Print the version and exit. |
 
 ### Examples
 
@@ -88,11 +89,19 @@ litscan src --functions-only
 
 | Environment variable | Description |
 |----------------------|-------------|
-| `LITSCAN_CONFIG_DIR` | Directory where `logging.ini` and `lit_ignore` are seeded and read from. When unset, the bundled copies inside the package are used directly. |
+| `LITSCAN_CONFIG_DIR` | Directory where `logging.ini`, `lit_ignore`, `lit_brace_ext`, and `lit_control_kw` are seeded on first run and read from. When unset, the bundled copies inside the package are used directly. |
 
 ### Ignore patterns
 
 The `lit_ignore` file (seeded into `LITSCAN_CONFIG_DIR` on first run) contains one regex pattern per line. Any literal whose value matches a pattern is excluded from scan results. Edit the file to suppress noise such as common stop-words or numeric constants you do not care about.
+
+### Brace-style language extensions
+
+The `lit_brace_ext` file (seeded into `LITSCAN_CONFIG_DIR` on first run) extends the built-in set of brace-style language extensions used by `--functions-only`. One extension per line (e.g. `.dart`). The built-in defaults (`.java`, `.js`, `.ts`, `.jsx`, `.tsx`, `.c`, `.cpp`, `.h`, `.hpp`, `.cs`, `.go`, `.rs`, `.kt`, `.swift`, `.scala`, `.groovy`, `.gs`, `.gsx`) are always active; entries in this file are added on top.
+
+### Control-flow keywords
+
+The `lit_control_kw` file (seeded into `LITSCAN_CONFIG_DIR` on first run) extends the built-in set of control-flow keywords excluded from function detection in `--functions-only` mode. One keyword per line (e.g. `using`). The built-in defaults (`if`, `else`, `for`, `while`, `do`, `switch`, `try`, `catch`, `finally`, `with`, `synchronized`) are always active; entries in this file are added on top.
 
 ## Development
 
@@ -115,6 +124,8 @@ flowchart TD
     discover --> concurrent["ThreadPoolExecutor\n(parallel scan)"]
     concurrent --> scan["scan_file()\nscanner.py"]
     scan --> litignore["lit_ignore\n(exclude patterns)"]
+    scan --> litbraceext["lit_brace_ext\n(extra brace-style extensions)"]
+    scan --> litcontrolkw["lit_control_kw\n(extra control-flow keywords)"]
     scan --> store["SessionStore\nstore.py (SQLite)"]
     store --> report["write_outputs()\nreporter.py"]
     report --> JSON["JSON report"]

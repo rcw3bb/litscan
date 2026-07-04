@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TypedDict
 
-from . import LIT_IGNORE_PATH
+from . import LIT_BRACE_EXT_PATH, LIT_CONTROL_KW_PATH, LIT_IGNORE_PATH
 
 # Ordered alternation: triple-quoted blocks first (multiline), then single-line
 # strings, then decimal numbers, then integers.  String patterns appear first so
@@ -155,6 +155,49 @@ def _load_ignore_patterns(path: Path) -> list[re.Pattern[str]]:
 
 
 _IGNORE_PATTERNS: list[re.Pattern[str]] = _load_ignore_patterns(LIT_IGNORE_PATH)
+
+
+def _load_brace_suffixes(path: Path) -> frozenset[str]:
+    """Load additional brace-style extensions from *path*.
+
+    Lines starting with ``#`` and blank lines are skipped. Each remaining
+    entry is normalised to lowercase and prefixed with a dot when absent.
+    Returns only the additions; built-in defaults are unaffected.
+
+    Author: Ron Webb
+    Since: 1.4.0
+    """
+    suffixes: set[str] = set()
+    for line in path.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#"):
+            ext = stripped.lower()
+            if not ext.startswith("."):
+                ext = "." + ext
+            suffixes.add(ext)
+    return frozenset(suffixes)
+
+
+def _load_control_keywords(path: Path) -> frozenset[str]:
+    """Load additional control-flow keywords from *path*.
+
+    Lines starting with ``#`` and blank lines are skipped. Each remaining
+    entry is stripped and added as-is. Returns only the additions; built-in
+    defaults are unaffected.
+
+    Author: Ron Webb
+    Since: 1.4.0
+    """
+    keywords: set[str] = set()
+    for line in path.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#"):
+            keywords.add(stripped)
+    return frozenset(keywords)
+
+
+_BRACE_STYLE_SUFFIXES = _BRACE_STYLE_SUFFIXES | _load_brace_suffixes(LIT_BRACE_EXT_PATH)
+_CONTROL_KW = _CONTROL_KW | _load_control_keywords(LIT_CONTROL_KW_PATH)
 
 
 def _is_docstring_position(source: str, match_start: int) -> bool:

@@ -397,3 +397,34 @@ def test_main_functions_only_flag_excludes_module_level(
     assert result.exit_code == 0
     assert '"inside"' in all_literals
     assert '"top"' not in all_literals
+
+
+def test_main_version_flag_prints_version(monkeypatch) -> None:
+    """--version should print the program name and version then exit with code 0."""
+    monkeypatch.setattr(cli, "setup_logger", lambda _name: logging.getLogger("tests"))
+    runner = CliRunner()
+
+    result = runner.invoke(cli.main, ["--version"])
+
+    assert result.exit_code == 0
+    assert "litscan" in result.output
+    assert cli.__version__ in result.output
+
+
+def test_main_keyboard_interrupt_exits_with_code_1(tmp_path: Path, monkeypatch) -> None:
+    """A KeyboardInterrupt during scanning must print an interrupted message and exit 1."""
+    sample_file = tmp_path / "code.js"
+    sample_file.write_text("x = 1;", encoding="utf-8")
+    out_dir = tmp_path / "out"
+
+    def _raise_interrupt(*_args: object, **_kwargs: object) -> None:
+        raise KeyboardInterrupt()
+
+    monkeypatch.setattr(cli, "setup_logger", lambda _name: logging.getLogger("tests"))
+    monkeypatch.setattr(cli, "_run_concurrent_scan", _raise_interrupt)
+    runner = CliRunner()
+
+    result = runner.invoke(cli.main, [str(tmp_path), "--output-dir", str(out_dir)])
+
+    assert result.exit_code == 1
+    assert "interrupted" in result.output.lower()

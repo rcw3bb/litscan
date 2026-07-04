@@ -13,6 +13,8 @@ from litscan.scanner import (
     _get_brace_function_regions,
     _get_python_function_regions,
     _is_docstring_position,
+    _load_brace_suffixes,
+    _load_control_keywords,
     _load_ignore_patterns,
     _mask_for_structure,
     _mask_non_literals,
@@ -797,3 +799,97 @@ def test_scan_file_functions_only(tmp_path: Path) -> None:
     values = [o.value for o in occurrences]
     assert '"inside"' in values
     assert '"top"' not in values
+
+
+# ---------------------------------------------------------------------------
+# _load_brace_suffixes unit tests
+# ---------------------------------------------------------------------------
+
+
+def test_load_brace_suffixes_returns_normalised_extensions(
+    tmp_path: Path,
+) -> None:
+    """_load_brace_suffixes should normalise entries to lowercase with a leading dot."""
+    cfg = tmp_path / "lit_brace_ext"
+    cfg.write_text(".Dart\nsol\n", encoding="utf-8")
+    result = _load_brace_suffixes(cfg)
+    assert ".dart" in result
+    assert ".sol" in result
+
+
+def test_load_brace_suffixes_skips_comments_and_blank_lines(
+    tmp_path: Path,
+) -> None:
+    """_load_brace_suffixes should skip lines starting with # and blank lines."""
+    cfg = tmp_path / "lit_brace_ext"
+    cfg.write_text("# a comment\n\n.dart\n", encoding="utf-8")
+    result = _load_brace_suffixes(cfg)
+    assert len(result) == 1
+    assert ".dart" in result
+
+
+def test_load_brace_suffixes_returns_frozenset(
+    tmp_path: Path,
+) -> None:
+    """_load_brace_suffixes should return a frozenset."""
+    cfg = tmp_path / "lit_brace_ext"
+    cfg.write_text(".dart\n", encoding="utf-8")
+    result = _load_brace_suffixes(cfg)
+    assert isinstance(result, frozenset)
+
+
+def test_load_brace_suffixes_empty_file_returns_empty_frozenset(
+    tmp_path: Path,
+) -> None:
+    """_load_brace_suffixes should return an empty frozenset for a comment-only file."""
+    cfg = tmp_path / "lit_brace_ext"
+    cfg.write_text("# just a comment\n", encoding="utf-8")
+    result = _load_brace_suffixes(cfg)
+    assert result == frozenset()
+
+
+# ---------------------------------------------------------------------------
+# _load_control_keywords unit tests
+# ---------------------------------------------------------------------------
+
+
+def test_load_control_keywords_returns_stripped_keywords(
+    tmp_path: Path,
+) -> None:
+    """_load_control_keywords should return stripped, non-comment entries."""
+    cfg = tmp_path / "lit_control_kw"
+    cfg.write_text("using\nlock\n", encoding="utf-8")
+    result = _load_control_keywords(cfg)
+    assert "using" in result
+    assert "lock" in result
+
+
+def test_load_control_keywords_skips_comments_and_blank_lines(
+    tmp_path: Path,
+) -> None:
+    """_load_control_keywords should skip lines starting with # and blank lines."""
+    cfg = tmp_path / "lit_control_kw"
+    cfg.write_text("# a comment\n\nusing\n", encoding="utf-8")
+    result = _load_control_keywords(cfg)
+    assert len(result) == 1
+    assert "using" in result
+
+
+def test_load_control_keywords_returns_frozenset(
+    tmp_path: Path,
+) -> None:
+    """_load_control_keywords should return a frozenset."""
+    cfg = tmp_path / "lit_control_kw"
+    cfg.write_text("lock\n", encoding="utf-8")
+    result = _load_control_keywords(cfg)
+    assert isinstance(result, frozenset)
+
+
+def test_load_control_keywords_empty_file_returns_empty_frozenset(
+    tmp_path: Path,
+) -> None:
+    """_load_control_keywords should return an empty frozenset for a comment-only file."""
+    cfg = tmp_path / "lit_control_kw"
+    cfg.write_text("# just a comment\n", encoding="utf-8")
+    result = _load_control_keywords(cfg)
+    assert result == frozenset()

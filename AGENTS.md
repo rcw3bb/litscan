@@ -15,6 +15,9 @@ pylint 10/10. Author: Ron Webb (ron@ronella.xyz), version 1.0.0.
 - litscan/__init__.py — package init; sets `__version__`
 - litscan/cli.py — CLI entry point (`main` function)
 - litscan/logging.ini — logging config bundled inside the package; seeded into `LITSCAN_CONFIG_DIR` on first run
+- litscan/lit_ignore — regex ignore-list; seeded into `LITSCAN_CONFIG_DIR` on first run
+- litscan/lit_brace_ext — user-extendable brace-style language extensions for `--functions-only`; seeded into `LITSCAN_CONFIG_DIR` on first run
+- litscan/lit_control_kw — user-extendable control-flow keywords excluded from function detection; seeded into `LITSCAN_CONFIG_DIR` on first run
 - litscan/scanner.py — literal scanning logic
 - litscan/store.py — SQLite session store (`SessionStore`); occurrences persisted per UUID, deleted after report
 - litscan/reporter.py — report generation (JSON + HTML output); exposes `write_outputs`
