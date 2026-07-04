@@ -26,13 +26,13 @@ from rich.progress import (
 from logenrich import setup_logger
 
 from . import __version__
+from . import __app_name__ as _APP_NAME
 from . import CONF_DIR
 from .reporter import write_outputs
 from .scanner import scan_file
 from .store import SessionStore
 
 _VALID_FORMATS = ("json", "html", "all")
-_APP_NAME = "litscan"
 _console = Console(stderr=True)
 _logger = setup_logger(__name__, conf_dir=CONF_DIR)
 
@@ -150,6 +150,9 @@ def _run_concurrent_scan(
 
 
 @click.command()
+@click.version_option(
+    version=__version__, prog_name=_APP_NAME, message="%(prog)s v%(version)s"
+)
 @click.argument("path")
 @click.option(
     "--ext",
@@ -255,14 +258,23 @@ def main(  # pylint: disable=too-many-arguments,too-many-positional-arguments,to
 
     session_id = str(uuid.uuid4())
     store = SessionStore(db_path)
+    interrupted = False
+    groups: list[dict[str, object]] = []
+    written: list[Path] = []
     try:
         _run_concurrent_scan(files, store, session_id, workers, functions_only)
         groups = store.read_groups(session_id)
         stem = Path(output).stem
         written = write_outputs(groups, output_dir, stem, fmt)
+    except KeyboardInterrupt:
+        interrupted = True
+        _console.print("[yellow]Scan interrupted by user.[/yellow]")
     finally:
         store.delete_session(session_id)
         store.close()
+
+    if interrupted:
+        raise SystemExit(1)
 
     total = sum(g["count"] for g in groups)
     _logger.info(

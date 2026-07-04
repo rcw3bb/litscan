@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.4.0 - 2026-07-05
+
+### Added
+
+- `--version` CLI flag that prints the application name and version then exits.
+- `lit_brace_ext` config file bundled inside the package and seeded to `LITSCAN_CONFIG_DIR` on first run; one extension per line, additive to the built-in `_BRACE_STYLE_SUFFIXES` set used by `--functions-only`.
+- `lit_control_kw` config file bundled inside the package and seeded to `LITSCAN_CONFIG_DIR` on first run; one keyword per line, additive to the built-in `_CONTROL_KW` set that excludes control-flow blocks from function detection.
+- `_load_brace_suffixes()` and `_load_control_keywords()` loader functions in `scanner.py` that read the new config files and union their entries into the respective frozensets at startup.
+- `__app_name__` constant exported from `litscan/__init__.py` alongside `__version__`.
+- Graceful `KeyboardInterrupt` handling in `main()`: prints an interrupted message, cleans up the SQLite session, and exits with code 1.
+
+### Changed
+
+- `cli.py` no longer defines `_APP_NAME` locally; imports `__app_name__` from `litscan/__init__.py` instead.
+- `litscan/__init__.py` `EnvDirBootstrap` resources list extended with `"lit_brace_ext"` and `"lit_control_kw"`; exports `LIT_BRACE_EXT_PATH` and `LIT_CONTROL_KW_PATH`.
+
 ## 1.3.1 - 2026-06-11
 
 ### Changed
