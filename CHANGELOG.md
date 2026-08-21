@@ -1,5 +1,31 @@
 # Changelog
 
+## 2.0.0 - 2026-08-22
+
+### Added
+
+- `litscan/parser.py` — new module that loads tree-sitter `Language` objects via `@lru_cache` and creates a fresh `Parser` per call (tree-sitter 0.26+ C-extension isolation requirement).
+- `EXTENSION_TO_LANGUAGE`, `LITERAL_NODE_TYPES`, and `FUNCTION_NODE_TYPES` constants in `scanner.py` covering 14 languages: Python, JavaScript, TypeScript, Java, Go, Gosu, C, C++, C#, Rust, Kotlin, Swift, Scala, and Groovy.
+- `_WalkContext` dataclass in `scanner.py` for bundling fixed AST-walk parameters.
+- `_is_docstring()` helper that excludes Python triple-quoted docstrings from results via AST parent-chain inspection.
+- `_walk_literals()` recursive tree-sitter node walker that stops recursing at matched literal nodes.
+- Fifteen new tree-sitter runtime dependencies: `tree-sitter` (core), `tree-sitter-python`, `tree-sitter-javascript`, `tree-sitter-typescript`, `tree-sitter-java`, `tree-sitter-go`, `tree-sitter-gosu`, `tree-sitter-c`, `tree-sitter-cpp`, `tree-sitter-c-sharp`, `tree-sitter-rust`, `tree-sitter-kotlin`, `tree-sitter-swift`, `tree-sitter-scala`, `tree-sitter-groovy`.
+- Test fixtures for all new languages: `sample.c`, `sample.cpp`, `sample.cs`, `sample.rs`, `sample.kt`, `sample.swift`, `sample.scala`, `sample.groovy`, `func_sample.c`, `func_sample.rs`, plus `sample.go`.
+
+### Changed
+
+- `scanner.py` fully rewritten to use tree-sitter AST walking. `scan_literals()` now accepts `source_bytes: bytes` and an explicit `language: str` instead of a plain source string. Literal detection is language-specific via the node-type tables.
+- `scan_file()` now derives the language from the file extension via `EXTENSION_TO_LANGUAGE`; unsupported extensions are skipped with a warning instead of silently returning nothing.
+- `__init__.py` `EnvDirBootstrap` resources reduced to `["logging.ini", "lit_ignore"]`; `LIT_BRACE_EXT_PATH` and `LIT_CONTROL_KW_PATH` exports removed.
+- `cli.py` `--functions-only` help text updated to list all 14 supported languages.
+- Fixture filenames normalised to lowercase (`sample.java`, `func_sample.java`, `sample.cs`) for compatibility with case-sensitive Linux CI filesystems.
+
+### Removed
+
+- `lit_brace_ext` config file and all brace-style extension loading/matching logic (`_load_brace_suffixes`, `_BRACE_STYLE_SUFFIXES`).
+- `lit_control_kw` config file and all control-keyword loading logic (`_load_control_keywords`, `_CONTROL_KW`).
+- Regex-based literal scanning, comment and docstring masking helpers, and brace-region detection functions (all superseded by tree-sitter AST walking).
+
 ## 1.4.0 - 2026-07-05
 
 ### Added
