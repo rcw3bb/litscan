@@ -4,25 +4,25 @@
 
 litscan is a Python CLI tool (Python ^3.14, Poetry 2.2, PEP 621) that scans a codebase for string
 and numeric literals, helping developers spot hard-coded values in source files. Entry point:
-`litscan.cli:main` (run as `poetry run litscan`). No runtime dependencies; dev deps are black,
-pylint, pytest, and pytest-cov. Test: `poetry run pytest --cov=litscan tests --cov-report html`.
-Format and lint: `poetry run black litscan; poetry run pylint litscan`. Quality gates: ≥90% coverage,
-pylint 10/10. Author: Ron Webb (ron@ronella.xyz), version 1.0.0.
+`litscan.cli:main` (run as `poetry run litscan`). Language support (via tree-sitter): Python,
+JavaScript, TypeScript, Java, Go, Gosu, C, C++, C#, Rust, Kotlin, Swift, Scala, Groovy. Dev deps are black, pylint, pytest, and pytest-cov.
+Test: `poetry run pytest --cov=litscan tests --cov-report html`. Format and lint:
+`poetry run black litscan; poetry run pylint litscan`. Quality gates: ≥90% coverage,
+pylint 10/10. Author: Ron Webb (ron@ronella.xyz), version 2.0.0.
 
 ## Tree
 
 - litscan/ — main package (CLI, scanner, utilities)
 - litscan/__init__.py — package init; sets `__version__`
 - litscan/cli.py — CLI entry point (`main` function)
+- litscan/parser.py — tree-sitter language loading (LRU-cached) and source parsing
 - litscan/logging.ini — logging config bundled inside the package; seeded into `LITSCAN_CONFIG_DIR` on first run
 - litscan/lit_ignore — regex ignore-list; seeded into `LITSCAN_CONFIG_DIR` on first run
-- litscan/lit_brace_ext — user-extendable brace-style language extensions for `--functions-only`; seeded into `LITSCAN_CONFIG_DIR` on first run
-- litscan/lit_control_kw — user-extendable control-flow keywords excluded from function detection; seeded into `LITSCAN_CONFIG_DIR` on first run
-- litscan/scanner.py — literal scanning logic
+- litscan/scanner.py — tree-sitter-based literal scanning logic
 - litscan/store.py — SQLite session store (`SessionStore`); occurrences persisted per UUID, deleted after report
 - litscan/reporter.py — report generation (JSON + HTML output); exposes `write_outputs`
 - tests/ — pytest suite mirroring litscan/ structure
-- tests/fixtures/ — sample source files used in tests (java, js, py)
+- tests/fixtures/ — sample source files used in tests (c, cpp, cs, go, groovy, java, js, kt, py, rs, scala, swift)
 - tests/test_store.py — tests for store module
 - tests/test_reporter.py — tests for reporter module
 - pyproject.toml — PEP 621 project metadata and Poetry build config
