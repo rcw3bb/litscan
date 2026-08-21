@@ -506,7 +506,7 @@ def test_scan_file_javascript_fixture() -> None:
 
 def test_scan_file_java_fixture() -> None:
     """scan_file should find expected literals in the Java fixture."""
-    occurrences = scan_file(_FIXTURES / "Sample.java")
+    occurrences = scan_file(_FIXTURES / "sample.java")
     values = _values(occurrences)
     nums = _numbers(occurrences)
     assert '"Charlie"' in values
@@ -569,7 +569,7 @@ def test_scan_file_functions_only_python_excludes_class_var() -> None:
 
 def test_scan_file_functions_only_java_includes_method_body() -> None:
     """--functions-only must include literals inside Java method bodies."""
-    occurrences = scan_file(_FIXTURES / "FuncSample.java", functions_only=True)
+    occurrences = scan_file(_FIXTURES / "func_sample.java", functions_only=True)
     values = _values(occurrences)
     assert '"method_string"' in values
     assert '"another_method"' in values
@@ -577,7 +577,7 @@ def test_scan_file_functions_only_java_includes_method_body() -> None:
 
 def test_scan_file_functions_only_java_excludes_class_field() -> None:
     """--functions-only must exclude class-level fields in Java."""
-    occurrences = scan_file(_FIXTURES / "FuncSample.java", functions_only=True)
+    occurrences = scan_file(_FIXTURES / "func_sample.java", functions_only=True)
     values = _values(occurrences)
     assert '"class_field"' not in values
 
@@ -798,7 +798,7 @@ def test_scan_file_cpp_fixture() -> None:
 
 def test_scan_file_csharp_fixture() -> None:
     """scan_file should find expected literals in the C# fixture."""
-    occurrences = scan_file(_FIXTURES / "Sample.cs")
+    occurrences = scan_file(_FIXTURES / "sample.cs")
     values = _values(occurrences)
     nums = _numbers(occurrences)
     assert '"Alice"' in values
