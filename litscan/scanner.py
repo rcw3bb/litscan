@@ -71,13 +71,7 @@ LITERAL_NODE_TYPES: dict[str, frozenset[str]] = {
             "float_literal",
         }
     ),
-    "Gosu": frozenset(
-        {
-            "string_literal",
-            "decimal_integer_literal",
-            "decimal_floating_point_literal",
-        }
-    ),
+    "Gosu": frozenset({"string_literal", "number_literal"}),
     "C": frozenset({"string_literal", "number_literal", "char_literal"}),
     "C++": frozenset({"string_literal", "number_literal", "char_literal"}),
     "CSharp": frozenset({"string_literal", "integer_literal", "real_literal"}),

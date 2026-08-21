@@ -1,6 +1,6 @@
 [project]
 name = "litscan"
-version = "2.0.0"
+version = "2.0.1"
 description = "A small CLI tool that scans a codebase for string and numeric literals, helping you quickly spot hard-coded values in source files."
 authors = [
     {name = "Ron Webb",email = "ron@ronella.xyz"}

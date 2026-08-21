@@ -1,4 +1,4 @@
-# litscan 2.0.0
+# litscan 2.0.1
 
 > A small CLI tool that scans a codebase for string and numeric literals, helping you quickly spot hard-coded values in source files.
 

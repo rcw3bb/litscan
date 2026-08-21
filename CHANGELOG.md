@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.0.1 - 2026-08-22
+
+### Fixed
+
+- Gosu numeric literal detection in `scanner.py` by adding `number_literal` to the Gosu literal-node mapping, ensuring integer and floating-point literals are reported when scanning `.gs` and `.gsx` files.
+- Added Gosu regression tests in `tests/test_scanner.py` for integer and floating-point literals.
+
 ## 2.0.0 - 2026-08-22
 
 ### Added
