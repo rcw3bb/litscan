@@ -6,85 +6,122 @@ Since: 1.0.0
 
 from __future__ import annotations
 
-import ast
-import bisect
+import logging
 import re
+from collections.abc import Generator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TypedDict
 
-from . import LIT_BRACE_EXT_PATH, LIT_CONTROL_KW_PATH, LIT_IGNORE_PATH
+from tree_sitter import Node, Tree  # type: ignore[import-untyped]
 
-# Ordered alternation: triple-quoted blocks first (multiline), then single-line
-# strings, then decimal numbers, then integers.  String patterns appear first so
-# that any digits inside a quoted literal are consumed as part of the string
-# match and are never re-matched as standalone numeric literals.
-_PATTERN = re.compile(
-    r'"""[\s\S]*?"""'
-    r"|'''[\s\S]*?'''"
-    r'|"(?:[^"\\\n]|\\.)*"'
-    r"|'(?:[^'\\\n]|\\.)*'"
-    r"|\b\d+\.\d+\b"
-    r"|\b\d+\b",
-)
+from . import LIT_IGNORE_PATH
+from .parser import parse
 
-# File suffixes treated as Python source (enables docstring detection).
-_PYTHON_SUFFIXES: frozenset[str] = frozenset({".py", ".pyi"})
+_logger = logging.getLogger(__name__)
 
-# File suffixes whose block structure is delimited by braces.
-_BRACE_STYLE_SUFFIXES: frozenset[str] = frozenset(
-    {
-        ".java",
-        ".js",
-        ".ts",
-        ".jsx",
-        ".tsx",
-        ".c",
-        ".cpp",
-        ".h",
-        ".hpp",
-        ".cs",
-        ".go",
-        ".rs",
-        ".kt",
-        ".swift",
-        ".scala",
-        ".groovy",
-        ".gs",
-        ".gsx",
-    }
-)
+# Maps file extension → tree-sitter language name.
+EXTENSION_TO_LANGUAGE: dict[str, str] = {
+    ".py": "Python",
+    ".pyi": "Python",
+    ".js": "JavaScript",
+    ".mjs": "JavaScript",
+    ".cjs": "JavaScript",
+    ".ts": "TypeScript",
+    ".tsx": "TypeScript",
+    ".java": "Java",
+    ".go": "Go",
+    ".gs": "Gosu",
+    ".gsx": "Gosu",
+    ".c": "C",
+    ".h": "C",
+    ".cpp": "C++",
+    ".cc": "C++",
+    ".cxx": "C++",
+    ".hpp": "C++",
+    ".hxx": "C++",
+    ".cs": "CSharp",
+    ".rs": "Rust",
+    ".kt": "Kotlin",
+    ".kts": "Kotlin",
+    ".swift": "Swift",
+    ".scala": "Scala",
+    ".groovy": "Groovy",
+    ".gradle": "Groovy",
+}
 
-# Keywords that open brace-blocks but are NOT function/method definitions.
-_CONTROL_KW: frozenset[str] = frozenset(
-    {
-        "if",
-        "else",
-        "for",
-        "while",
-        "do",
-        "switch",
-        "try",
-        "catch",
-        "finally",
-        "with",
-        "synchronized",
-    }
-)
+# Per-language literal node types recognised by tree-sitter.
+LITERAL_NODE_TYPES: dict[str, frozenset[str]] = {
+    "Python": frozenset({"string", "integer", "float"}),
+    "JavaScript": frozenset({"string", "number", "template_string"}),
+    "TypeScript": frozenset({"string", "number", "template_string"}),
+    "Java": frozenset(
+        {
+            "string_literal",
+            "text_block",
+            "decimal_integer_literal",
+            "decimal_floating_point_literal",
+        }
+    ),
+    "Go": frozenset(
+        {
+            "interpreted_string_literal",
+            "raw_string_literal",
+            "int_literal",
+            "float_literal",
+        }
+    ),
+    "Gosu": frozenset(
+        {
+            "string_literal",
+            "decimal_integer_literal",
+            "decimal_floating_point_literal",
+        }
+    ),
+    "C": frozenset({"string_literal", "number_literal", "char_literal"}),
+    "C++": frozenset({"string_literal", "number_literal", "char_literal"}),
+    "CSharp": frozenset({"string_literal", "integer_literal", "real_literal"}),
+    "Rust": frozenset({"string_literal", "integer_literal", "float_literal"}),
+    "Kotlin": frozenset({"string_literal", "number_literal", "float_literal"}),
+    "Swift": frozenset(
+        {
+            "line_string_literal",
+            "multi_line_string_literal",
+            "integer_literal",
+            "real_literal",
+        }
+    ),
+    "Scala": frozenset({"string", "integer_literal", "floating_point_literal"}),
+    "Groovy": frozenset(
+        {
+            "string_literal",
+            "decimal_integer_literal",
+            "decimal_floating_point_literal",
+        }
+    ),
+}
 
-# Pattern used during the pre-scan masking step.  Comments are listed before
-# string alternatives so that quote characters appearing inside comment text
-# are consumed by the comment pattern first and are never matched as string
-# delimiters.
-_MASK_PATTERN = re.compile(
-    r"#[^\n]*"
-    r"|//[^\n]*"
-    r"|/\*[\s\S]*?\*/"
-    r'|"""[\s\S]*?"""'
-    r"|'''[\s\S]*?'''"
-    r'|"(?:[^"\\\n]|\\.)*"'
-    r"|'(?:[^'\\\n]|\\.)*'",
-)
+# Per-language function/method node types (used by ``--functions-only``).
+FUNCTION_NODE_TYPES: dict[str, frozenset[str]] = {
+    "Python": frozenset({"function_definition"}),
+    "JavaScript": frozenset(
+        {"function_declaration", "function_expression", "arrow_function"}
+    ),
+    "TypeScript": frozenset(
+        {"function_declaration", "function_expression", "arrow_function"}
+    ),
+    "Java": frozenset({"method_declaration", "constructor_declaration"}),
+    "Go": frozenset({"function_declaration", "method_declaration"}),
+    "Gosu": frozenset({"function_declaration", "constructor_declaration"}),
+    "C": frozenset({"function_definition"}),
+    "C++": frozenset({"function_definition"}),
+    "CSharp": frozenset({"method_declaration", "constructor_declaration"}),
+    "Rust": frozenset({"function_item"}),
+    "Kotlin": frozenset({"function_declaration"}),
+    "Swift": frozenset({"function_declaration"}),
+    "Scala": frozenset({"function_definition"}),
+    "Groovy": frozenset({"function_definition"}),
+}
 
 
 @dataclass(frozen=True)
@@ -99,42 +136,6 @@ class LiteralOccurrence:
     line: int
     column: int
     value: str
-
-
-def _build_line_offsets(source: str) -> list[int]:
-    """Return a list of character offsets where each line starts (0-indexed).
-
-    The result always begins with ``0`` (start of line 1). Each subsequent
-    entry is the offset of the first character on the following line.
-    Precomputing this once gives O(log n) line/column lookup per match via
-    :func:`_line_and_column`, instead of the naive O(n) slice-and-scan.
-
-    Author: Ron Webb
-    Since: 1.0.0
-    """
-    offsets: list[int] = [0]
-    start = 0
-    while True:
-        pos = source.find("\n", start)
-        if pos == -1:
-            break
-        offsets.append(pos + 1)
-        start = pos + 1
-    return offsets
-
-
-def _line_and_column(line_offsets: list[int], offset: int) -> tuple[int, int]:
-    """Return 1-based line and 0-based column for a character offset in source.
-
-    *line_offsets* must be the list returned by :func:`_build_line_offsets`.
-    Uses :func:`bisect.bisect_right` for O(log n) lookup.
-
-    Author: Ron Webb
-    Since: 1.0.0
-    """
-    line = bisect.bisect_right(line_offsets, offset)
-    col = offset - line_offsets[line - 1]
-    return line, col
 
 
 def _load_ignore_patterns(path: Path) -> list[re.Pattern[str]]:
@@ -157,368 +158,123 @@ def _load_ignore_patterns(path: Path) -> list[re.Pattern[str]]:
 _IGNORE_PATTERNS: list[re.Pattern[str]] = _load_ignore_patterns(LIT_IGNORE_PATH)
 
 
-def _load_brace_suffixes(path: Path) -> frozenset[str]:
-    """Load additional brace-style extensions from *path*.
-
-    Lines starting with ``#`` and blank lines are skipped. Each remaining
-    entry is normalised to lowercase and prefixed with a dot when absent.
-    Returns only the additions; built-in defaults are unaffected.
+@dataclass(frozen=True)
+class _WalkContext:
+    """Immutable context shared across recursive literal-walk calls.
 
     Author: Ron Webb
-    Since: 1.4.0
+    Since: 2.0.0
     """
-    suffixes: set[str] = set()
-    for line in path.read_text(encoding="utf-8").splitlines():
-        stripped = line.strip()
-        if stripped and not stripped.startswith("#"):
-            ext = stripped.lower()
-            if not ext.startswith("."):
-                ext = "." + ext
-            suffixes.add(ext)
-    return frozenset(suffixes)
+
+    source_bytes: bytes
+    literal_types: frozenset[str]
+    function_types: frozenset[str]
+    language: str
+    functions_only: bool
 
 
-def _load_control_keywords(path: Path) -> frozenset[str]:
-    """Load additional control-flow keywords from *path*.
+def _is_docstring(node: Node, source_bytes: bytes) -> bool:
+    """Return ``True`` when *node* is a Python triple-quoted docstring.
 
-    Lines starting with ``#`` and blank lines are skipped. Each remaining
-    entry is stripped and added as-is. Returns only the additions; built-in
-    defaults are unaffected.
+    A string node is treated as a docstring when its text starts with triple
+    quotes, its parent is an ``expression_statement``, and its grandparent is
+    either ``module`` or ``block`` (the body of a function or class).
 
     Author: Ron Webb
-    Since: 1.4.0
+    Since: 2.0.0
     """
-    keywords: set[str] = set()
-    for line in path.read_text(encoding="utf-8").splitlines():
-        stripped = line.strip()
-        if stripped and not stripped.startswith("#"):
-            keywords.add(stripped)
-    return frozenset(keywords)
-
-
-_BRACE_STYLE_SUFFIXES = _BRACE_STYLE_SUFFIXES | _load_brace_suffixes(LIT_BRACE_EXT_PATH)
-_CONTROL_KW = _CONTROL_KW | _load_control_keywords(LIT_CONTROL_KW_PATH)
-
-
-def _is_docstring_position(source: str, match_start: int) -> bool:
-    """Return ``True`` when a triple-quoted string is in a docstring position.
-
-    A string is considered a docstring when it starts at the beginning of its
-    line (only whitespace before it on that line) **and** either:
-
-    * nothing except blank lines or ``#`` comments precedes it in the file
-      (module-level docstring), or
-    * the previous non-blank, non-comment line ends with ``:`` (function,
-      class, ``if``, ``for`` … block opener).
-
-    Author: Ron Webb
-    Since: 1.1.0
-    """
-    # The triple-quote must be the first non-whitespace token on its line.
-    line_start = source.rfind("\n", 0, match_start) + 1
-    if source[line_start:match_start].strip():
+    text = source_bytes[node.start_byte : node.end_byte]
+    if not (text.startswith(b'"""') or text.startswith(b"'''")):
         return False
-
-    # Examine lines above the current line.
-    before = source[:line_start]
-    if not before.strip():
-        return True  # nothing meaningful above → module docstring
-
-    for line in reversed(before.splitlines()):
-        stripped = line.strip()
-        if not stripped or stripped.startswith("#"):
-            continue  # skip blank lines and # comments
-        return stripped.endswith(":")
-
-    # Only blank lines / comments above → module docstring.
-    return True
-
-
-def _mask_for_structure(source: str) -> str:
-    """Return *source* with all comments and string literals replaced by spaces.
-
-    Preserves newlines so that character offsets remain identical to those of
-    the original source.  Used for structural analysis (e.g. brace matching)
-    where the content of strings and comments must not be interpreted as code.
-
-    Author: Ron Webb
-    Since: 1.2.0
-    """
-
-    def _replace(match: re.Match[str]) -> str:
-        return "".join(" " if c != "\n" else c for c in match.group())
-
-    return _MASK_PATTERN.sub(_replace, source)
-
-
-def _get_python_function_regions(
-    source: str,
-    line_offsets: list[int],
-) -> list[tuple[int, int]]:
-    """Return character ranges covering each function/method definition in Python source.
-
-    Uses :mod:`ast` to locate :class:`ast.FunctionDef` and
-    :class:`ast.AsyncFunctionDef` nodes.  Each range starts at the ``def``
-    keyword and ends at the last character of the function body.  Returns an
-    empty list when the source cannot be parsed.
-
-    Author: Ron Webb
-    Since: 1.2.0
-    """
-    try:
-        tree = ast.parse(source)
-    except SyntaxError:
-        return []
-
-    regions: list[tuple[int, int]] = []
-    for node in ast.walk(tree):
-        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            continue
-        if node.end_lineno is None or node.end_col_offset is None:
-            continue
-        start = line_offsets[node.lineno - 1] + node.col_offset
-        end_line_idx = node.end_lineno - 1
-        if end_line_idx < len(line_offsets):
-            end = line_offsets[end_line_idx] + node.end_col_offset
-        else:
-            end = len(source)
-        regions.append((start, end))
-
-    return regions
-
-
-def _find_matching_brace(structural: str, open_pos: int) -> int:
-    """Return the position of the ``}`` matching the ``{`` at *open_pos*.
-
-    Scans *structural* (a source string with strings and comments already
-    replaced by spaces) starting from *open_pos*, tracking brace depth.
-    Returns the last position in *structural* when no matching ``}`` is found.
-
-    Author: Ron Webb
-    Since: 1.2.0
-    """
-    depth = 0
-    for i in range(open_pos, len(structural)):
-        char = structural[i]
-        if char == "{":
-            depth += 1
-        elif char == "}":
-            depth -= 1
-            if depth == 0:
-                return i
-    return len(structural) - 1
-
-
-def _is_func_open_brace(structural: str, brace_pos: int) -> bool:
-    """Return ``True`` when the ``{`` at *brace_pos* opens a function/method body.
-
-    Examines up to 1 000 characters before *brace_pos* in the structural
-    source (strings and comments already replaced by spaces).  A ``{`` is
-    considered a function opener when the text before it ends with a closing
-    parenthesis ``)`` (possibly followed by ``throws``/``extends``/
-    ``implements`` clauses or a return-type annotation), or with a lambda arrow
-    (``->`` / ``=>``) – provided the identifier immediately before ``(`` is
-    not a control-flow keyword.
-
-    Author: Ron Webb
-    Since: 1.2.0
-    """
-    look_start = max(0, brace_pos - 1000)
-    before = structural[look_start:brace_pos].rstrip()
-
-    # Arrow / lambda: ) => { or ) -> {
-    if re.search(r"\)\s*(?::\s*[\w<>\[\], ]+)?\s*(?:->|=>)\s*$", before):
-        return True
-
-    # Standard function/method: word( ... ) [throws/extends/implements ...] {
-    paren_end = re.search(
-        r"\)\s*(?:(?:throws|extends|implements)\s+[\w,\s<>]+)?\s*$", before
-    )
-    if not paren_end:
+    parent = node.parent
+    if parent is None or parent.type != "expression_statement":
         return False
-
-    # Find the ( that matches the ) found above.
-    relevant = before[: paren_end.start() + 1]  # up to and including the )
-    depth = 0
-    open_pos: int | None = None
-    for i in range(len(relevant) - 1, -1, -1):
-        char = relevant[i]
-        if char == ")":
-            depth += 1
-        elif char == "(":
-            depth -= 1
-            if depth == 0:
-                open_pos = i
-                break
-
-    if open_pos is None:
-        return False
-
-    # The word immediately before ( must not be a control-flow keyword.
-    word_match = re.search(r"\b(\w+)\s*$", relevant[:open_pos])
-    if not word_match:
-        return False
-
-    return word_match.group(1) not in _CONTROL_KW
+    grandparent = parent.parent
+    return grandparent is not None and grandparent.type in {"module", "block"}
 
 
-def _get_brace_function_regions(source: str) -> list[tuple[int, int]]:
-    """Return character ranges covering each function/method body in a brace-style source.
+def _walk_literals(
+    node: Node,
+    ctx: _WalkContext,
+    inside_function: bool = False,
+) -> Generator[Node, None, None]:
+    """Recursively walk *node*, yielding each literal :class:`Node`.
 
-    Operates on the structurally-masked view of *source* (via
-    :func:`_mask_for_structure`) so that braces inside string literals and
-    comments are ignored.  Each region spans from the opening ``{`` to the
-    matching closing ``}`` (inclusive).
+    When *ctx.functions_only* is ``True`` only literals that are descendants of
+    a function or method node are yielded.  Python triple-quoted docstrings are
+    always excluded.
+
+    Recursion stops when a literal node is matched so that composite literal
+    nodes (e.g. ``string_start`` / ``string_content`` children of ``string``)
+    are never yielded separately.
 
     Author: Ron Webb
-    Since: 1.2.0
+    Since: 2.0.0
     """
-    structural = _mask_for_structure(source)
-    regions: list[tuple[int, int]] = []
-    i = 0
-    while i < len(structural):
-        if structural[i] == "{" and _is_func_open_brace(structural, i):
-            end = _find_matching_brace(structural, i)
-            regions.append((i, end + 1))
-        i += 1
-    return regions
+    if node.type in ctx.literal_types:
+        if not ctx.functions_only or inside_function:
+            if not (ctx.language == "Python" and _is_docstring(node, ctx.source_bytes)):
+                yield node
+        return
 
+    if ctx.functions_only and not inside_function and node.type in ctx.function_types:
+        for child in node.children:
+            yield from _walk_literals(child, ctx, True)
+        return
 
-def _mask_outside_regions(source: str, regions: list[tuple[int, int]]) -> str:
-    """Return *source* with all characters outside *regions* replaced by spaces.
-
-    Preserves newlines everywhere so that character offsets – and therefore
-    the line/column numbers reported in :class:`LiteralOccurrence` – remain
-    identical to those of the original source.  Overlapping or adjacent
-    regions are merged before masking.  When *regions* is empty the entire
-    source is masked.
-
-    Author: Ron Webb
-    Since: 1.2.0
-    """
-    if not regions:
-        return "".join(" " if c != "\n" else c for c in source)
-
-    # Sort and merge overlapping / adjacent regions.
-    sorted_regions = sorted(regions)
-    merged: list[list[int]] = []
-    for r_start, r_end in sorted_regions:
-        if merged and r_start <= merged[-1][1]:
-            merged[-1][1] = max(merged[-1][1], r_end)
-        else:
-            merged.append([r_start, r_end])
-
-    parts: list[str] = []
-    pos = 0
-    for r_start, r_end in merged:
-        for char in source[pos:r_start]:
-            parts.append("\n" if char == "\n" else " ")
-        parts.append(source[r_start:r_end])
-        pos = r_end
-    for char in source[pos:]:
-        parts.append("\n" if char == "\n" else " ")
-
-    return "".join(parts)
-
-
-def _get_function_regions(
-    source: str,
-    suffix: str,
-    line_offsets: list[int],
-) -> list[tuple[int, int]]:
-    """Return character ranges covering each function/method for the given file type.
-
-    Dispatches to :func:`_get_python_function_regions` for Python files and to
-    :func:`_get_brace_function_regions` for brace-style languages.  Returns an
-    empty list for unsupported file types; when ``functions_only`` is ``True``
-    no literals are reported for those files.
-
-    Author: Ron Webb
-    Since: 1.2.0
-    """
-    if suffix in _PYTHON_SUFFIXES:
-        return _get_python_function_regions(source, line_offsets)
-    if suffix in _BRACE_STYLE_SUFFIXES:
-        return _get_brace_function_regions(source)
-    return []
-
-
-def _mask_non_literals(source: str, suffix: str) -> str:
-    """Return *source* with comment and docstring regions replaced by spaces.
-
-    Replaces every non-newline character in each masked region with a space so
-    that character offsets (and therefore line/column numbers) remain identical
-    to the original source.  Masked regions are:
-
-    * Single-line comments (``#…`` and ``//…``).
-    * Block comments including Javadoc (``/* … */``).
-    * For ``.py`` / ``.pyi`` files: triple-quoted strings that occupy a
-      docstring position (see :func:`_is_docstring_position`).
-
-    Author: Ron Webb
-    Since: 1.1.0
-    """
-    is_python = suffix in _PYTHON_SUFFIXES
-
-    def _replace(match: re.Match[str]) -> str:
-        text = match.group()
-        if text.startswith(("#", "//", "/*")):
-            return "".join(" " if c != "\n" else c for c in text)
-        if is_python and text.startswith(('"""', "'''")):
-            if _is_docstring_position(source, match.start()):
-                return "".join(" " if c != "\n" else c for c in text)
-        return text
-
-    return _MASK_PATTERN.sub(_replace, source)
+    for child in node.children:
+        yield from _walk_literals(child, ctx, inside_function)
 
 
 def scan_literals(
-    source: str,
+    source_bytes: bytes,
     file_path: Path,
+    language: str,
     ignore_patterns: list[re.Pattern[str]] | None = None,
     functions_only: bool = False,
 ) -> list[LiteralOccurrence]:
-    """Scan source text and collect string and numeric literals.
+    """Parse *source_bytes* with tree-sitter and collect literal occurrences.
 
-    Works with any language or plain text file. Detects:
-    - Block strings/text enclosed with triple double or triple single quotes
-      (may span multiple lines).
-    - Strings/text enclosed with double or single quotes (single line).
-    - Decimal and integer numbers.
+    Supported languages are determined by :data:`LITERAL_NODE_TYPES`.  When
+    *ignore_patterns* is ``None`` the module-level :data:`_IGNORE_PATTERNS`
+    (loaded from ``lit_ignore``) are used; pass an explicit list to override.
 
-    When *ignore_patterns* is ``None`` the module-level :data:`_IGNORE_PATTERNS`
-    (loaded from ``lit_ignore``) are used. Pass an explicit list to override.
-
-    When *functions_only* is ``True`` only literals that appear inside a
-    function or method body are reported.  Supported file types are Python
-    (``.py`` / ``.pyi``) and brace-style languages (see
-    :data:`_BRACE_STYLE_SUFFIXES`).  Literals in unsupported file types are
-    suppressed entirely when this flag is set.
+    When *functions_only* is ``True`` only literals inside function or method
+    bodies are reported.
 
     Author: Ron Webb
     Since: 1.0.0
     """
     active = _IGNORE_PATTERNS if ignore_patterns is None else ignore_patterns
-    suffix = file_path.suffix.lower()
-    effective_source = _mask_non_literals(source, suffix)
-    line_offsets = _build_line_offsets(source)
-    if functions_only:
-        regions = _get_function_regions(source, suffix, line_offsets)
-        effective_source = _mask_outside_regions(effective_source, regions)
+    tree: Tree | None = parse(source_bytes, language)
+    if tree is None:
+        return []
+
+    ctx = _WalkContext(
+        source_bytes=source_bytes,
+        literal_types=LITERAL_NODE_TYPES.get(language, frozenset()),
+        function_types=FUNCTION_NODE_TYPES.get(language, frozenset()),
+        language=language,
+        functions_only=functions_only,
+    )
     occurrences: list[LiteralOccurrence] = []
-    for match in _PATTERN.finditer(effective_source):
-        value = match.group()
+
+    for node in _walk_literals(tree.root_node, ctx):
+        value = source_bytes[node.start_byte : node.end_byte].decode(
+            "utf-8", errors="replace"
+        )
         if any(p.search(value) for p in active):
             continue
-        line, column = _line_and_column(line_offsets, match.start())
+        row, col = node.start_point
         occurrences.append(
             LiteralOccurrence(
                 file_path=file_path,
-                line=line,
-                column=column,
+                line=row + 1,
+                column=col,
                 value=value,
             )
         )
+
     return occurrences
 
 
@@ -528,18 +284,23 @@ def scan_file(
 ) -> list[LiteralOccurrence]:
     """Read *file_path* from disk and return all literal occurrences found in it.
 
-    Convenience wrapper around :func:`scan_literals` intended for parallel
-    execution: a single callable that handles both I/O and scanning so it can
-    be submitted directly to a :class:`concurrent.futures.Executor`.
-
-    When *functions_only* is ``True`` only literals inside function/method
-    bodies are reported (see :func:`scan_literals`).
+    The tree-sitter language is determined from the file extension via
+    :data:`EXTENSION_TO_LANGUAGE`.  Files with unsupported extensions are
+    skipped with a warning and an empty list is returned.
 
     Author: Ron Webb
     Since: 1.0.0
     """
-    contents = file_path.read_text(encoding="utf-8", errors="replace")
-    return scan_literals(contents, file_path, functions_only=functions_only)
+    language = EXTENSION_TO_LANGUAGE.get(file_path.suffix.lower())
+    if language is None:
+        _logger.warning(
+            "Unsupported extension '%s' — skipping %s", file_path.suffix, file_path
+        )
+        return []
+    source_bytes = file_path.read_bytes()
+    return scan_literals(
+        source_bytes, file_path, language, functions_only=functions_only
+    )
 
 
 class LiteralGroup(TypedDict):
@@ -555,8 +316,7 @@ class LiteralGroup(TypedDict):
 
 
 # ScanReport uses the functional TypedDict syntax because "run-date" is not a
-# valid Python identifier.  Docstrings are not supported in this form; see the
-# individual field names for documentation of the report structure.
+# valid Python identifier.
 ScanReport = TypedDict(
     "ScanReport",
     {

@@ -215,8 +215,8 @@ def _run_concurrent_scan(
     default=False,
     help=(
         "Scan only literals that appear inside function or method implementations. "
-        "Supported for Python and brace-style languages "
-        "(Java, JS, TS, C/C++, C#, Go, Rust, Kotlin, Swift, Scala, Groovy)."
+        "Supported languages: Python, JavaScript, TypeScript, Java, Go, Gosu, "
+        "C, C++, C#, Rust, Kotlin, Swift, Scala, Groovy."
     ),
 )
 def main(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals

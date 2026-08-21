@@ -1,4 +1,4 @@
-# litscan 1.4.0
+# litscan 2.0.0
 
 > A small CLI tool that scans a codebase for string and numeric literals, helping you quickly spot hard-coded values in source files.
 
@@ -22,15 +22,26 @@ litscan <path> [options]
 
 ### What is detected
 
-The scanner recognises the following literal types in any source file:
+The scanner uses tree-sitter to parse each file and extracts literal nodes per language:
 
-| Type | Examples |
-|------|---------|
-| Triple-quoted strings (multiline) | `"""hello"""`, `'''world'''` |
-| Double-quoted strings | `"hello"` |
-| Single-quoted strings | `'world'` |
-| Decimal numbers | `3.14`, `0.5` |
-| Integer numbers | `42`, `0` |
+| Language | Extensions | Literal types detected |
+|----------|------------|------------------------|
+| Python | `.py` `.pyi` | strings, integers, floats |
+| JavaScript | `.js` `.mjs` `.cjs` | strings, numbers, template strings |
+| TypeScript | `.ts` `.tsx` | strings, numbers, template strings |
+| Java | `.java` | string literals, text blocks, integer literals, floating-point literals |
+| Go | `.go` | interpreted strings, raw strings, integer literals, float literals |
+| Gosu | `.gs` `.gsx` | string literals, integer literals, floating-point literals |
+| C | `.c` `.h` | string literals, number literals, char literals |
+| C++ | `.cpp` `.cc` `.cxx` `.hpp` `.hxx` | string literals, number literals, char literals |
+| C# | `.cs` | string literals, integer literals, real literals |
+| Rust | `.rs` | string literals, integer literals, float literals |
+| Kotlin | `.kt` `.kts` | string literals, number literals, float literals |
+| Swift | `.swift` | string literals, integer literals, real literals |
+| Scala | `.scala` | strings, integer literals, floating-point literals |
+| Groovy | `.groovy` `.gradle` | string literals, integer literals, floating-point literals |
+
+Files with extensions not in the table above are skipped with a warning.
 
 Results are grouped by unique literal value and sorted by occurrence count (highest first).
 
@@ -50,7 +61,7 @@ Results are grouped by unique literal value and sorted by occurrence count (high
 | `--format <fmt>` | `json` | Output format: `json`, `html`, or `all` |
 | `--workers <n>` | `min(32, cpu_count + 4)` | Number of parallel worker threads used during scanning |
 | `--db <path>` | `<system-temp>/litscan.db` | Path to the SQLite scratch database that stores occurrences during a scan run. Session records are removed after the report is written. |
-| `--functions-only` | _(off)_ | Scan only literals that appear inside function or method implementations. Supported for Python and brace-style languages (Java, JS, JSX, TS, TSX, C/C++, C#, Go, Rust, Kotlin, Swift, Scala, Groovy, GS, GSX). |
+| `--functions-only` | _(off)_ | Scan only literals that appear inside function or method implementations. Supported languages: Python, JavaScript, TypeScript, Java, Go, Gosu, C, C++, C#, Rust, Kotlin, Swift, Scala, Groovy. |
 | `--version` | | Print the version and exit. |
 
 ### Examples
@@ -89,19 +100,11 @@ litscan src --functions-only
 
 | Environment variable | Description |
 |----------------------|-------------|
-| `LITSCAN_CONFIG_DIR` | Directory where `logging.ini`, `lit_ignore`, `lit_brace_ext`, and `lit_control_kw` are seeded on first run and read from. When unset, the bundled copies inside the package are used directly. |
+| `LITSCAN_CONFIG_DIR` | Directory where `logging.ini` and `lit_ignore` are seeded on first run and read from. When unset, the bundled copies inside the package are used directly. |
 
 ### Ignore patterns
 
 The `lit_ignore` file (seeded into `LITSCAN_CONFIG_DIR` on first run) contains one regex pattern per line. Any literal whose value matches a pattern is excluded from scan results. Edit the file to suppress noise such as common stop-words or numeric constants you do not care about.
-
-### Brace-style language extensions
-
-The `lit_brace_ext` file (seeded into `LITSCAN_CONFIG_DIR` on first run) extends the built-in set of brace-style language extensions used by `--functions-only`. One extension per line (e.g. `.dart`). The built-in defaults (`.java`, `.js`, `.ts`, `.jsx`, `.tsx`, `.c`, `.cpp`, `.h`, `.hpp`, `.cs`, `.go`, `.rs`, `.kt`, `.swift`, `.scala`, `.groovy`, `.gs`, `.gsx`) are always active; entries in this file are added on top.
-
-### Control-flow keywords
-
-The `lit_control_kw` file (seeded into `LITSCAN_CONFIG_DIR` on first run) extends the built-in set of control-flow keywords excluded from function detection in `--functions-only` mode. One keyword per line (e.g. `using`). The built-in defaults (`if`, `else`, `for`, `while`, `do`, `switch`, `try`, `catch`, `finally`, `with`, `synchronized`) are always active; entries in this file are added on top.
 
 ## Development
 
@@ -123,9 +126,9 @@ flowchart TD
     CLI --> discover["discover_files()"]
     discover --> concurrent["ThreadPoolExecutor\n(parallel scan)"]
     concurrent --> scan["scan_file()\nscanner.py"]
+    scan --> parser["parser.py\n(tree-sitter)"]
+    parser --> ts["Language-specific\ngrammar packages"]
     scan --> litignore["lit_ignore\n(exclude patterns)"]
-    scan --> litbraceext["lit_brace_ext\n(extra brace-style extensions)"]
-    scan --> litcontrolkw["lit_control_kw\n(extra control-flow keywords)"]
     scan --> store["SessionStore\nstore.py (SQLite)"]
     store --> report["write_outputs()\nreporter.py"]
     report --> JSON["JSON report"]
@@ -135,7 +138,8 @@ flowchart TD
 | Module | Responsibility |
 |--------|---------------|
 | `cli.py` | Argument parsing, file discovery, orchestration |
-| `scanner.py` | Regex-based literal extraction; `LiteralOccurrence` / `LiteralGroup` types |
+| `parser.py` | Tree-sitter language loading (LRU-cached) and source parsing |
+| `scanner.py` | AST-based literal extraction; `LiteralOccurrence` / `LiteralGroup` types |
 | `store.py` | `SessionStore` — thread-safe SQLite scratch store; one UUID per scan run |
 | `reporter.py` | `write_outputs()` — renders JSON and/or HTML reports |
 | `logenrich` | External library that provides `setup_logger()` — logging config seeded from `logging.ini` |

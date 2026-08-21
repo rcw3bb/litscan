@@ -1,7 +1,0 @@
-# Additional brace-style language extensions for --functions-only detection.
-# Built-in defaults (.java .js .ts .jsx .tsx .c .cpp .h .hpp .cs .go .rs .kt .swift .scala .groovy .gs .gsx)
-# are always active. Add extra extensions here (one per line) to extend the built-in set.
-# Lines starting with # and blank lines are ignored.
-# Examples:
-#   .dart
-#   .sol

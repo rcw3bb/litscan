@@ -1,7 +1,0 @@
-# Additional control-flow keywords excluded from function detection in --functions-only mode.
-# Built-in defaults (if else for while do switch try catch finally with synchronized)
-# are always active. Add extra keywords here (one per line) to extend the built-in set.
-# Lines starting with # and blank lines are ignored.
-# Examples:
-#   using
-#   lock
