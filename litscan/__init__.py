@@ -6,7 +6,7 @@ Since: 1.0.0
 
 from env_dir_bootstrap import EnvDirBootstrap
 
-__version__ = "2.0.0"
+__version__ = "2.0.1"
 __app_name__ = "litscan"
 
 _bootstrapper = EnvDirBootstrap(

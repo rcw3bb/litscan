@@ -222,6 +222,25 @@ def test_scan_literals_go_float() -> None:
 
 
 # ---------------------------------------------------------------------------
+# scan_literals - Gosu literals
+# ---------------------------------------------------------------------------
+
+
+def test_scan_literals_gosu_integer() -> None:
+    """It should find an integer literal in Gosu source."""
+    src = b"var n = 99"
+    occurrences = scan_literals(src, Path("f.gs"), "Gosu")
+    assert "99" in _numbers(occurrences)
+
+
+def test_scan_literals_gosu_float() -> None:
+    """It should find a float literal in Gosu source."""
+    src = b"var pi = 3.14"
+    occurrences = scan_literals(src, Path("f.gs"), "Gosu")
+    assert "3.14" in _numbers(occurrences)
+
+
+# ---------------------------------------------------------------------------
 # Comments – automatically excluded (tree-sitter separates comment nodes)
 # ---------------------------------------------------------------------------
 
