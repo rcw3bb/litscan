@@ -9,11 +9,19 @@ from __future__ import annotations
 from pathlib import Path
 import json
 import logging
+import os
+import shutil
+import subprocess
 
+import pytest
 from braincraft.ignorefile import IgnoreFile
 from click.testing import CliRunner
 
 from litscan import cli
+
+_FIXTURES = Path(__file__).parent / "fixtures"
+_CLI_PROJECT = _FIXTURES / "cli_project"
+_LITSCAN_EXE = shutil.which("litscan")
 
 
 def test_parse_paths_single_path() -> None:
@@ -431,6 +439,131 @@ def test_main_keyboard_interrupt_exits_with_code_1(tmp_path: Path, monkeypatch) 
     assert "interrupted" in result.output.lower()
 
 
+# ---------------------------------------------------------------------------
+# Real subprocess invocations of the installed `litscan` console script,
+# scanning the tests/fixtures/cli_project fixture tree.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.skipif(_LITSCAN_EXE is None, reason="litscan console script not installed")
+def test_cli_command_scans_fixture_project(tmp_path: Path) -> None:
+    """Running the real `litscan` command must report literals found on disk."""
+    out_dir = tmp_path / "out"
+
+    result = subprocess.run(
+        [_LITSCAN_EXE, str(_CLI_PROJECT), "--output-dir", str(out_dir)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    data = json.loads((out_dir / "litscan-output.json").read_text(encoding="utf-8"))
+    all_literals = [g["literal"] for g in data["findings"]]
+
+    assert result.returncode == 0
+    assert '"cli_top_secret"' in all_literals
+    assert '"cli_nested_hello"' in all_literals
+
+
+@pytest.mark.skipif(_LITSCAN_EXE is None, reason="litscan console script not installed")
+def test_cli_command_ext_flag_excludes_non_matching_files(tmp_path: Path) -> None:
+    """--ext on the real command must exclude files outside the given extensions."""
+    out_dir = tmp_path / "out"
+
+    result = subprocess.run(
+        [
+            _LITSCAN_EXE,
+            str(_CLI_PROJECT),
+            "--ext",
+            "py,js",
+            "--output-dir",
+            str(out_dir),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    data = json.loads((out_dir / "litscan-output.json").read_text(encoding="utf-8"))
+    all_literals = [g["literal"] for g in data["findings"]]
+
+    assert result.returncode == 0
+    assert not any("cli_excluded_note" in lit for lit in all_literals)
+
+
+@pytest.mark.skipif(_LITSCAN_EXE is None, reason="litscan console script not installed")
+def test_cli_command_version_flag() -> None:
+    """The real `litscan --version` invocation must print the app name and version."""
+    result = subprocess.run(
+        [_LITSCAN_EXE, "--version"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0
+    assert "litscan" in result.stdout
+    assert cli.__version__ in result.stdout
+
+
+@pytest.mark.skipif(_LITSCAN_EXE is None, reason="litscan console script not installed")
+def test_cli_command_no_files_reports_none_found(tmp_path: Path) -> None:
+    """The real command must exit 0 and report nothing found for an empty directory."""
+    empty_dir = tmp_path / "empty"
+    empty_dir.mkdir()
+
+    result = subprocess.run(
+        [_LITSCAN_EXE, str(empty_dir)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0
+    assert "no files found" in result.stderr.lower()
+
+
+@pytest.mark.skipif(_LITSCAN_EXE is None, reason="litscan console script not installed")
+def test_cli_command_format_html_writes_report(tmp_path: Path) -> None:
+    """The real command with --format html must write an HTML report to disk."""
+    out_dir = tmp_path / "out"
+
+    result = subprocess.run(
+        [
+            _LITSCAN_EXE,
+            str(_CLI_PROJECT),
+            "--format",
+            "html",
+            "--output-dir",
+            str(out_dir),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    html_file = out_dir / "litscan-output.html"
+
+    assert result.returncode == 0
+    assert html_file.exists()
+    assert "cli_top_secret" in html_file.read_text(encoding="utf-8")
+
+
+@pytest.mark.skipif(_LITSCAN_EXE is None, reason="litscan console script not installed")
+def test_cli_command_survives_restrictive_stdio_encoding(tmp_path: Path) -> None:
+    """The real command must not crash when stdio is forced to ASCII-only."""
+    out_dir = tmp_path / "out"
+    env = dict(os.environ, PYTHONIOENCODING="ascii")
+
+    result = subprocess.run(
+        [_LITSCAN_EXE, str(_CLI_PROJECT), "--output-dir", str(out_dir)],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+
+    assert result.returncode == 0
+    assert (out_dir / "litscan-output.json").exists()
+
+
 def test_parse_literals_multiple_values() -> None:
     """It should parse a semicolon-separated string into a set of target values."""
     result = cli._parse_literals("foo; bar ;baz")
@@ -476,6 +609,28 @@ def test_discover_files_ignores_matching_file(tmp_path: Path) -> None:
 
     assert kept in result
     assert excluded not in result
+
+
+def test_build_ignore_returns_none_when_file_missing(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """_build_ignore must return None and log a warning when the file is absent."""
+    monkeypatch.setattr(cli, "PATH_IGNORE_PATH", tmp_path / "missing.litscanignore")
+
+    result = cli._build_ignore(tmp_path)
+
+    assert result is None
+
+
+def test_build_ignore_returns_none_on_invalid_utf8(tmp_path: Path, monkeypatch) -> None:
+    """_build_ignore must return None instead of raising on non-UTF-8 file content."""
+    ignore_file = tmp_path / ".litscanignore"
+    ignore_file.write_bytes(b"\xff\xfe*.log\n")
+    monkeypatch.setattr(cli, "PATH_IGNORE_PATH", ignore_file)
+
+    result = cli._build_ignore(tmp_path)
+
+    assert result is None
 
 
 def test_main_min_option_filters_low_count_literals(

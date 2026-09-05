@@ -24,6 +24,7 @@ pylint 10/10. Author: Ron Webb (ron@ronella.xyz), version 2.1.0.
 - litscan/reporter.py — report generation (JSON + HTML output); exposes `write_outputs`
 - tests/ — pytest suite mirroring litscan/ structure
 - tests/fixtures/ — sample source files used in tests (c, cpp, cs, go, groovy, java, js, kt, py, rs, scala, swift)
+- tests/fixtures/cli_project/ — small multi-file/dir tree used by real `litscan` subprocess integration tests in test_cli.py
 - tests/test_store.py — tests for store module
 - tests/test_reporter.py — tests for reporter module
 - pyproject.toml — PEP 621 project metadata and Poetry build config
