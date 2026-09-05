@@ -1,4 +1,4 @@
-# litscan 2.0.1
+# litscan 2.1.0
 
 > A small CLI tool that scans a codebase for string and numeric literals, helping you quickly spot hard-coded values in source files.
 
@@ -62,6 +62,9 @@ Results are grouped by unique literal value and sorted by occurrence count (high
 | `--workers <n>` | `min(32, cpu_count + 4)` | Number of parallel worker threads used during scanning |
 | `--db <path>` | `<system-temp>/litscan.db` | Path to the SQLite scratch database that stores occurrences during a scan run. Session records are removed after the report is written. |
 | `--functions-only` | _(off)_ | Scan only literals that appear inside function or method implementations. Supported languages: Python, JavaScript, TypeScript, Java, Go, Gosu, C, C++, C#, Rust, Kotlin, Swift, Scala, Groovy. |
+| `--min <count>` | `0` | Minimum occurrence count a literal must have to be included in the report. `0` means no filtering. |
+| `--mode <mode>` | `both` | Literal category to scan: `string`, `number`, or `both`. |
+| `--literals <values>` | _(all)_ | Semicolon-separated target literal values to restrict the report to (e.g. `foo;bar`). Matched against the decoded, single-line literal value; multi-line literals are never matched. |
 | `--version` | | Print the version and exit. |
 
 ### Examples
@@ -96,15 +99,35 @@ Scan only literals inside functions and methods:
 litscan src --functions-only
 ```
 
+Only report string literals that occur at least 3 times:
+
+```powershell
+litscan src --mode string --min 3
+```
+
+Restrict the report to specific target literal values:
+
+```powershell
+litscan src --literals "TODO;FIXME"
+```
+
 ## Configuration
 
 | Environment variable | Description |
 |----------------------|-------------|
-| `LITSCAN_CONFIG_DIR` | Directory where `logging.ini` and `lit_ignore` are seeded on first run and read from. When unset, the bundled copies inside the package are used directly. |
+| `LITSCAN_CONFIG_DIR` | Directory where `logging.ini`, `lit_ignore`, and `.litscanignore` are seeded on first run and read from. When unset, the bundled copies inside the package are used directly. |
 
 ### Ignore patterns
 
 The `lit_ignore` file (seeded into `LITSCAN_CONFIG_DIR` on first run) contains one regex pattern per line. Any literal whose value matches a pattern is excluded from scan results. Edit the file to suppress noise such as common stop-words or numeric constants you do not care about.
+
+### Ignored files and directories
+
+The `.litscanignore` file (also seeded into `LITSCAN_CONFIG_DIR` on first run) uses gitignore syntax to exclude entire files or directories from being scanned in the first place — matching directories are pruned during traversal, so their contents are never read. It ships with sensible defaults (`.git/`, `node_modules/`, `dist/`, `build/`, `__pycache__/`, `.venv/`); edit the file to add project-specific paths to skip.
+
+### Report metadata
+
+Every JSON/HTML report records the run's inputs alongside the findings: the resolved `--path` entries (`paths-scanned`), the `--min` threshold (`min-count`), the `--mode` used, and any `--literals` targets applied.
 
 ## Development
 
@@ -124,6 +147,7 @@ poetry install
 flowchart TD
     CLI["cli.py\n(entry point)"] --> logenrich["setup_logger()\nlogenrich"]
     CLI --> discover["discover_files()"]
+    discover --> pathignore[".litscanignore\n(braincraft.IgnoreFile)"]
     discover --> concurrent["ThreadPoolExecutor\n(parallel scan)"]
     concurrent --> scan["scan_file()\nscanner.py"]
     scan --> parser["parser.py\n(tree-sitter)"]

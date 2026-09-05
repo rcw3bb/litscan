@@ -95,6 +95,56 @@ LITERAL_NODE_TYPES: dict[str, frozenset[str]] = {
     ),
 }
 
+# Per-language string-only subset of LITERAL_NODE_TYPES (used by ``--mode string``).
+STRING_LITERAL_NODE_TYPES: dict[str, frozenset[str]] = {
+    "Python": frozenset({"string"}),
+    "JavaScript": frozenset({"string", "template_string"}),
+    "TypeScript": frozenset({"string", "template_string"}),
+    "Java": frozenset({"string_literal", "text_block"}),
+    "Go": frozenset({"interpreted_string_literal", "raw_string_literal"}),
+    "Gosu": frozenset({"string_literal"}),
+    "C": frozenset({"string_literal", "char_literal"}),
+    "C++": frozenset({"string_literal", "char_literal"}),
+    "CSharp": frozenset({"string_literal"}),
+    "Rust": frozenset({"string_literal"}),
+    "Kotlin": frozenset({"string_literal"}),
+    "Swift": frozenset({"line_string_literal", "multi_line_string_literal"}),
+    "Scala": frozenset({"string"}),
+    "Groovy": frozenset({"string_literal"}),
+}
+
+# Per-language number-only subset of LITERAL_NODE_TYPES (used by ``--mode number``).
+NUMBER_LITERAL_NODE_TYPES: dict[str, frozenset[str]] = {
+    "Python": frozenset({"integer", "float"}),
+    "JavaScript": frozenset({"number"}),
+    "TypeScript": frozenset({"number"}),
+    "Java": frozenset({"decimal_integer_literal", "decimal_floating_point_literal"}),
+    "Go": frozenset({"int_literal", "float_literal"}),
+    "Gosu": frozenset({"number_literal"}),
+    "C": frozenset({"number_literal"}),
+    "C++": frozenset({"number_literal"}),
+    "CSharp": frozenset({"integer_literal", "real_literal"}),
+    "Rust": frozenset({"integer_literal", "float_literal"}),
+    "Kotlin": frozenset({"number_literal", "float_literal"}),
+    "Swift": frozenset({"integer_literal", "real_literal"}),
+    "Scala": frozenset({"integer_literal", "floating_point_literal"}),
+    "Groovy": frozenset({"decimal_integer_literal", "decimal_floating_point_literal"}),
+}
+
+
+def _literal_types_for_mode(language: str, mode: str) -> frozenset[str]:
+    """Return the literal node types applicable to *language* for the given *mode*.
+
+    Author: Ron Webb
+    Since: 2.1.0
+    """
+    if mode == "string":
+        return STRING_LITERAL_NODE_TYPES.get(language, frozenset())
+    if mode == "number":
+        return NUMBER_LITERAL_NODE_TYPES.get(language, frozenset())
+    return LITERAL_NODE_TYPES.get(language, frozenset())
+
+
 # Per-language function/method node types (used by ``--functions-only``).
 FUNCTION_NODE_TYPES: dict[str, frozenset[str]] = {
     "Python": frozenset({"function_definition"}),
@@ -220,12 +270,13 @@ def _walk_literals(
         yield from _walk_literals(child, ctx, inside_function)
 
 
-def scan_literals(
+def scan_literals(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     source_bytes: bytes,
     file_path: Path,
     language: str,
     ignore_patterns: list[re.Pattern[str]] | None = None,
     functions_only: bool = False,
+    mode: str = "both",
 ) -> list[LiteralOccurrence]:
     """Parse *source_bytes* with tree-sitter and collect literal occurrences.
 
@@ -234,7 +285,8 @@ def scan_literals(
     (loaded from ``lit_ignore``) are used; pass an explicit list to override.
 
     When *functions_only* is ``True`` only literals inside function or method
-    bodies are reported.
+    bodies are reported. *mode* selects which literal category is walked:
+    ``"string"``, ``"number"``, or ``"both"`` (default).
 
     Author: Ron Webb
     Since: 1.0.0
@@ -246,7 +298,7 @@ def scan_literals(
 
     ctx = _WalkContext(
         source_bytes=source_bytes,
-        literal_types=LITERAL_NODE_TYPES.get(language, frozenset()),
+        literal_types=_literal_types_for_mode(language, mode),
         function_types=FUNCTION_NODE_TYPES.get(language, frozenset()),
         language=language,
         functions_only=functions_only,
@@ -275,6 +327,7 @@ def scan_literals(
 def scan_file(
     file_path: Path,
     functions_only: bool = False,
+    mode: str = "both",
 ) -> list[LiteralOccurrence]:
     """Read *file_path* from disk and return all literal occurrences found in it.
 
@@ -293,8 +346,35 @@ def scan_file(
         return []
     source_bytes = file_path.read_bytes()
     return scan_literals(
-        source_bytes, file_path, language, functions_only=functions_only
+        source_bytes, file_path, language, functions_only=functions_only, mode=mode
     )
+
+
+_PREFIX_RE = re.compile(r"^[A-Za-z]{0,2}(?=[\"'`])")
+_WRAPPING_QUOTES = ('"""', "'''", '"', "'", "`")
+
+
+def decode_literal(value: str) -> str:
+    """Best-effort strip of a leading string prefix and one layer of wrapping quotes.
+
+    Only used for ``--literals`` comparisons; it does not perform full
+    per-language escape-sequence unescaping. Numeric literals pass through
+    unchanged since they carry no quote characters.
+
+    Author: Ron Webb
+    Since: 2.1.0
+    """
+    match = _PREFIX_RE.match(value)
+    body = value[match.end() :] if match else value
+    for quote in _WRAPPING_QUOTES:
+        quote_len = len(quote)
+        if (
+            len(body) >= 2 * quote_len
+            and body.startswith(quote)
+            and body.endswith(quote)
+        ):
+            return body[quote_len:-quote_len]
+    return value
 
 
 class LiteralGroup(TypedDict):
@@ -317,6 +397,10 @@ ScanReport = TypedDict(
         "application": str,
         "version": str,
         "run-date": str,
+        "paths-scanned": list[str],
+        "min-count": int,
+        "mode": str,
+        "literals": list[str],
         "findings": list[LiteralGroup],
     },
 )
