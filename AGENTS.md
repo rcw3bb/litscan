@@ -8,7 +8,7 @@ and numeric literals, helping developers spot hard-coded values in source files.
 JavaScript, TypeScript, Java, Go, Gosu, C, C++, C#, Rust, Kotlin, Swift, Scala, Groovy. Dev deps are black, pylint, pytest, and pytest-cov.
 Test: `poetry run pytest --cov=litscan tests --cov-report html`. Format and lint:
 `poetry run black litscan; poetry run pylint litscan`. Quality gates: ≥90% coverage,
-pylint 10/10. Author: Ron Webb (ron@ronella.xyz), version 2.0.0.
+pylint 10/10. Author: Ron Webb (ron@ronella.xyz), version 2.1.0.
 
 ## Tree
 
@@ -17,7 +17,8 @@ pylint 10/10. Author: Ron Webb (ron@ronella.xyz), version 2.0.0.
 - litscan/cli.py — CLI entry point (`main` function)
 - litscan/parser.py — tree-sitter language loading (LRU-cached) and source parsing
 - litscan/logging.ini — logging config bundled inside the package; seeded into `LITSCAN_CONFIG_DIR` on first run
-- litscan/lit_ignore — regex ignore-list; seeded into `LITSCAN_CONFIG_DIR` on first run
+- litscan/lit_ignore — regex ignore-list (literal values); seeded into `LITSCAN_CONFIG_DIR` on first run
+- litscan/.litscanignore — gitignore-style ignore-list (files/dirs); seeded into `LITSCAN_CONFIG_DIR` on first run; read via `braincraft.ignorefile.IgnoreFile`
 - litscan/scanner.py — tree-sitter-based literal scanning logic
 - litscan/store.py — SQLite session store (`SessionStore`); occurrences persisted per UUID, deleted after report
 - litscan/reporter.py — report generation (JSON + HTML output); exposes `write_outputs`

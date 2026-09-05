@@ -10,6 +10,7 @@ from pathlib import Path
 import json
 import logging
 
+from braincraft.ignorefile import IgnoreFile
 from click.testing import CliRunner
 
 from litscan import cli
@@ -78,7 +79,7 @@ def test_discover_files_nonexistent_path_returns_empty(tmp_path: Path) -> None:
 def test_main_returns_zero_when_no_files(monkeypatch) -> None:
     """It should return zero when there are no files to scan."""
     monkeypatch.setattr(cli, "setup_logger", lambda _name: logging.getLogger("tests"))
-    monkeypatch.setattr(cli, "discover_files", lambda _path, _ext: [])
+    monkeypatch.setattr(cli, "discover_files", lambda _path, _ext, _ignore=None: [])
     runner = CliRunner()
 
     result = runner.invoke(cli.main, ["some_dir"])
@@ -428,3 +429,156 @@ def test_main_keyboard_interrupt_exits_with_code_1(tmp_path: Path, monkeypatch) 
 
     assert result.exit_code == 1
     assert "interrupted" in result.output.lower()
+
+
+def test_parse_literals_multiple_values() -> None:
+    """It should parse a semicolon-separated string into a set of target values."""
+    result = cli._parse_literals("foo; bar ;baz")
+    assert result == {"foo", "bar", "baz"}
+
+
+def test_parse_literals_ignores_empty_segments() -> None:
+    """It should skip empty segments produced by trailing or double semicolons."""
+    result = cli._parse_literals("foo;;bar;")
+    assert result == {"foo", "bar"}
+
+
+def test_discover_files_prunes_ignored_directory(tmp_path: Path) -> None:
+    """discover_files must not descend into a directory matched by the ignore file."""
+    kept = tmp_path / "kept.js"
+    kept.write_text("x = 1;", encoding="utf-8")
+    ignored_dir = tmp_path / "dist"
+    ignored_dir.mkdir()
+    (ignored_dir / "hidden.js").write_text("y = 2;", encoding="utf-8")
+
+    ignore_file = tmp_path / ".litscanignore"
+    ignore_file.write_text("dist/\n", encoding="utf-8")
+    ignore = IgnoreFile(ignore_file, base_dir=tmp_path)
+
+    result = cli.discover_files(tmp_path, [], ignore)
+
+    assert kept in result
+    assert not any(p.parent == ignored_dir for p in result)
+
+
+def test_discover_files_ignores_matching_file(tmp_path: Path) -> None:
+    """discover_files must skip a single file matched by the ignore file."""
+    kept = tmp_path / "kept.js"
+    kept.write_text("x = 1;", encoding="utf-8")
+    excluded = tmp_path / "excluded.log"
+    excluded.write_text("z = 3;", encoding="utf-8")
+
+    ignore_file = tmp_path / ".litscanignore"
+    ignore_file.write_text("*.log\n", encoding="utf-8")
+    ignore = IgnoreFile(ignore_file, base_dir=tmp_path)
+
+    result = cli.discover_files(tmp_path, [], ignore)
+
+    assert kept in result
+    assert excluded not in result
+
+
+def test_main_min_option_filters_low_count_literals(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """--min should exclude literal groups whose count is below the threshold."""
+    sample_file = tmp_path / "code.js"
+    sample_file.write_text(
+        "a = 'many'; b = 'many'; c = 'many'; d = 'once';", encoding="utf-8"
+    )
+    out_dir = tmp_path / "out"
+
+    monkeypatch.setattr(cli, "setup_logger", lambda _name: logging.getLogger("tests"))
+    runner = CliRunner()
+
+    result = runner.invoke(
+        cli.main, [str(tmp_path), "--min", "2", "--output-dir", str(out_dir)]
+    )
+    data = json.loads((out_dir / "litscan-output.json").read_text(encoding="utf-8"))
+    all_literals = [g["literal"] for g in data["findings"]]
+
+    assert result.exit_code == 0
+    assert "'many'" in all_literals
+    assert "'once'" not in all_literals
+    assert data["min-count"] == 2
+
+
+def test_main_mode_string_excludes_numbers(tmp_path: Path, monkeypatch) -> None:
+    """--mode string should exclude numeric literals from the report."""
+    sample_file = tmp_path / "code.js"
+    sample_file.write_text("x = 'hello'; y = 42;", encoding="utf-8")
+    out_dir = tmp_path / "out"
+
+    monkeypatch.setattr(cli, "setup_logger", lambda _name: logging.getLogger("tests"))
+    runner = CliRunner()
+
+    result = runner.invoke(
+        cli.main, [str(tmp_path), "--mode", "string", "--output-dir", str(out_dir)]
+    )
+    data = json.loads((out_dir / "litscan-output.json").read_text(encoding="utf-8"))
+    all_literals = [g["literal"] for g in data["findings"]]
+
+    assert result.exit_code == 0
+    assert "'hello'" in all_literals
+    assert "42" not in all_literals
+    assert data["mode"] == "string"
+
+
+def test_main_literals_option_restricts_report(tmp_path: Path, monkeypatch) -> None:
+    """--literals should restrict the report to the given decoded target values."""
+    sample_file = tmp_path / "code.js"
+    sample_file.write_text("x = 'foo'; y = 'bar'; z = 'baz';", encoding="utf-8")
+    out_dir = tmp_path / "out"
+
+    monkeypatch.setattr(cli, "setup_logger", lambda _name: logging.getLogger("tests"))
+    runner = CliRunner()
+
+    result = runner.invoke(
+        cli.main,
+        [str(tmp_path), "--literals", "foo;bar", "--output-dir", str(out_dir)],
+    )
+    data = json.loads((out_dir / "litscan-output.json").read_text(encoding="utf-8"))
+    all_literals = [g["literal"] for g in data["findings"]]
+
+    assert result.exit_code == 0
+    assert "'foo'" in all_literals
+    assert "'bar'" in all_literals
+    assert "'baz'" not in all_literals
+    assert sorted(data["literals"]) == ["bar", "foo"]
+
+
+def test_main_literals_option_excludes_multiline_literal(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """--literals must never match a multi-line literal, even if it decodes to a target."""
+    sample_file = tmp_path / "code.py"
+    sample_file.write_text('x = """foo\nfoo"""\n', encoding="utf-8")
+    out_dir = tmp_path / "out"
+
+    monkeypatch.setattr(cli, "setup_logger", lambda _name: logging.getLogger("tests"))
+    runner = CliRunner()
+
+    result = runner.invoke(
+        cli.main,
+        [str(tmp_path), "--literals", "foo\nfoo", "--output-dir", str(out_dir)],
+    )
+    data = json.loads((out_dir / "litscan-output.json").read_text(encoding="utf-8"))
+
+    assert result.exit_code == 0
+    assert not data["findings"]
+
+
+def test_main_json_contains_paths_scanned(tmp_path: Path, monkeypatch) -> None:
+    """The JSON report must list the resolved --path entries under paths-scanned."""
+    sample_file = tmp_path / "code.js"
+    sample_file.write_text("x = 'scanned';", encoding="utf-8")
+    out_dir = tmp_path / "out"
+
+    monkeypatch.setattr(cli, "setup_logger", lambda _name: logging.getLogger("tests"))
+    runner = CliRunner()
+
+    result = runner.invoke(cli.main, [str(tmp_path), "--output-dir", str(out_dir)])
+    data = json.loads((out_dir / "litscan-output.json").read_text(encoding="utf-8"))
+
+    assert result.exit_code == 0
+    assert data["paths-scanned"] == [str(tmp_path)]

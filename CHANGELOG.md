@@ -1,5 +1,22 @@
 # Changelog
 
+## 2.1.0 - 2026-09-05
+
+### Added
+
+- `.litscanignore` — new bundled default file (seeded into `LITSCAN_CONFIG_DIR` like `logging.ini`/`lit_ignore`) using gitignore syntax to exclude files/directories from being scanned. Matching directories are pruned during traversal via `braincraft.ignorefile.IgnoreFile`, anchored per top-level `--path` root.
+- `--min <count>` CLI option to exclude literal groups whose occurrence count falls below a threshold; the threshold is recorded in the report as `min-count`.
+- `--mode {string,number,both}` CLI option to restrict scanning to string literals, number literals, or both (default). New `STRING_LITERAL_NODE_TYPES` and `NUMBER_LITERAL_NODE_TYPES` mappings in `scanner.py` split the existing per-language `LITERAL_NODE_TYPES`; char literals (C/C++) are classified as `string`.
+- `--literals <values>` CLI option (semicolon-separated) to restrict the report to specific target literal values, matched against each literal's decoded (unquoted) value via the new `decode_literal()` helper in `scanner.py`. Multi-line literals are never matched.
+- `paths-scanned`, `min-count`, `mode`, and `literals` fields added to `ScanReport` (JSON) and rendered in the HTML report header, recording the resolved scan paths and the active filters for a run.
+- New `braincraft (>=1.3.0,<2.0.0)` runtime dependency.
+
+### Changed
+
+- `cli.discover_files()` now walks directories manually (instead of `Path.rglob`) so ignored directories can be pruned from the traversal entirely.
+- `scanner.scan_literals()` and `scanner.scan_file()` accept a `mode` parameter.
+- `reporter.write_outputs()` and its private writers accept `paths_scanned`, `min_count`, `mode`, and `literals` parameters.
+
 ## 2.0.1 - 2026-08-22
 
 ### Fixed

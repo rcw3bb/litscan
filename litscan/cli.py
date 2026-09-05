@@ -10,9 +10,11 @@ import concurrent.futures
 import os
 import tempfile
 import uuid
+from collections.abc import Generator
 from pathlib import Path
 
 import click
+from braincraft.ignorefile import IgnoreFile
 from rich.console import Console
 from rich.progress import (
     BarColumn,
@@ -28,11 +30,13 @@ from logenrich import setup_logger
 from . import __version__
 from . import __app_name__ as _APP_NAME
 from . import CONF_DIR
+from . import PATH_IGNORE_PATH
 from .reporter import write_outputs
-from .scanner import scan_file
+from .scanner import decode_literal, scan_file
 from .store import SessionStore
 
 _VALID_FORMATS = ("json", "html", "all")
+_VALID_MODES = ("string", "number", "both")
 _console = Console(stderr=True)
 _logger = setup_logger(__name__, conf_dir=CONF_DIR)
 
@@ -72,36 +76,83 @@ def _parse_paths(raw: str) -> list[Path]:
     return result
 
 
-def _scan_and_store(task: tuple[Path, SessionStore, str, bool]) -> None:
+def _parse_literals(raw: str) -> set[str]:
+    """Parse a semicolon-separated literal-value string into a set of targets.
+
+    Example: ``"foo;bar"`` → ``{'foo', 'bar'}``
+
+    Author: Ron Webb
+    Since: 2.1.0
+    """
+    return {part.strip() for part in raw.split(";") if part.strip()}
+
+
+def _scan_and_store(task: tuple[Path, SessionStore, str, bool, str]) -> None:
     """Scan one file and write its occurrences to the session store.
 
-    Accepts a 4-tuple so the function can be passed directly to
+    Accepts a 5-tuple so the function can be passed directly to
     :meth:`concurrent.futures.Executor.map` without a closure.
 
     Author: Ron Webb
     Since: 1.0.0
     """
-    file_path, store, session_id, functions_only = task
+    file_path, store, session_id, functions_only, mode = task
     store.insert_occurrences(
-        session_id, scan_file(file_path, functions_only=functions_only)
+        session_id, scan_file(file_path, functions_only=functions_only, mode=mode)
     )
 
 
-def discover_files(path: Path, extensions: list[str]) -> list[Path]:
+def _build_ignore(base_dir: Path) -> IgnoreFile | None:
+    """Build a path-ignore matcher anchored at *base_dir*.
+
+    Returns ``None`` when the bundled ignore file is missing so callers can
+    proceed without path filtering instead of failing the whole scan.
+
+    Author: Ron Webb
+    Since: 2.1.0
+    """
+    try:
+        return IgnoreFile(PATH_IGNORE_PATH, base_dir=base_dir)
+    except FileNotFoundError:
+        _logger.warning("Ignore file not found at %s", PATH_IGNORE_PATH)
+        return None
+
+
+def _walk_unignored(
+    root: Path, ignore: IgnoreFile | None
+) -> Generator[Path, None, None]:
+    """Recursively yield files under *root*, pruning directories matched by *ignore*.
+
+    Author: Ron Webb
+    Since: 2.1.0
+    """
+    for entry in root.iterdir():
+        if ignore is not None and ignore.is_ignored(entry):
+            continue
+        if entry.is_dir():
+            yield from _walk_unignored(entry, ignore)
+        elif entry.is_file():
+            yield entry
+
+
+def discover_files(
+    path: Path, extensions: list[str], ignore: IgnoreFile | None = None
+) -> list[Path]:
     """Discover files under *path* that match the given extensions.
 
     When *extensions* is empty every file is included.
     Both files and directories are accepted; for a plain file the extension
-    filter still applies.
+    filter still applies. When *ignore* is given, matching files are skipped
+    and matching directories are pruned from the walk entirely.
 
     Author: Ron Webb
     Since: 1.0.0
     """
     candidates: list[Path]
     if path.is_file():
-        candidates = [path]
+        candidates = [] if ignore is not None and ignore.is_ignored(path) else [path]
     elif path.is_dir():
-        candidates = sorted(f for f in path.rglob("*") if f.is_file())
+        candidates = sorted(_walk_unignored(path, ignore))
     else:
         return []
 
@@ -110,12 +161,13 @@ def discover_files(path: Path, extensions: list[str]) -> list[Path]:
     return [f for f in candidates if f.suffix.lower() in extensions]
 
 
-def _run_concurrent_scan(
+def _run_concurrent_scan(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     files: list[Path],
     store: SessionStore,
     session_id: str,
     workers: int,
     functions_only: bool = False,
+    mode: str = "both",
 ) -> None:
     """Scan *files* concurrently and store results under *session_id*.
 
@@ -137,7 +189,7 @@ def _run_concurrent_scan(
         with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
             futures = {
                 executor.submit(
-                    _scan_and_store, (f, store, session_id, functions_only)
+                    _scan_and_store, (f, store, session_id, functions_only, mode)
                 ): f
                 for f in files
             }
@@ -219,6 +271,31 @@ def _run_concurrent_scan(
         "C, C++, C#, Rust, Kotlin, Swift, Scala, Groovy."
     ),
 )
+@click.option(
+    "--min",
+    "min_count",
+    type=int,
+    default=0,
+    help=(
+        "Minimum occurrence count a literal must have to be included in the "
+        "report (default: 0, no filtering)."
+    ),
+)
+@click.option(
+    "--mode",
+    default="both",
+    type=click.Choice(_VALID_MODES),
+    help="Literal category to scan: string, number, or both (default: both).",
+)
+@click.option(
+    "--literals",
+    default="",
+    help=(
+        "Semicolon-separated target literal values to restrict the report to "
+        "(matched against the decoded, single-line literal value; e.g. "
+        "'foo;bar'). Omit to include all literals."
+    ),
+)
 def main(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
     path: str,
     ext: str,
@@ -228,6 +305,9 @@ def main(  # pylint: disable=too-many-arguments,too-many-positional-arguments,to
     workers: int,
     db_path: Path,
     functions_only: bool,
+    min_count: int,
+    mode: str,
+    literals: str,
 ) -> None:
     """Scan source files for string and numeric literals.
 
@@ -239,12 +319,14 @@ def main(  # pylint: disable=too-many-arguments,too-many-positional-arguments,to
     _console.print(f"[bold]{_header}[/bold]")
     extensions = _parse_extensions(ext) if ext else []
     paths = _parse_paths(path)
+    literals_targets = _parse_literals(literals) if literals else set()
     seen: set[Path] = set()
     files: list[Path] = []
 
     with _console.status("[bold cyan]Discovering files\u2026", spinner="dots"):
         for target_path in paths:
-            for found_file in discover_files(target_path, extensions):
+            ignore = _build_ignore(target_path)
+            for found_file in discover_files(target_path, extensions, ignore):
                 if found_file not in seen:
                     seen.add(found_file)
                     files.append(found_file)
@@ -262,10 +344,27 @@ def main(  # pylint: disable=too-many-arguments,too-many-positional-arguments,to
     groups: list[dict[str, object]] = []
     written: list[Path] = []
     try:
-        _run_concurrent_scan(files, store, session_id, workers, functions_only)
+        _run_concurrent_scan(files, store, session_id, workers, functions_only, mode)
         groups = store.read_groups(session_id)
+        groups = [g for g in groups if g["count"] >= min_count]
+        if literals_targets:
+            groups = [
+                g
+                for g in groups
+                if "\n" not in g["literal"]
+                and decode_literal(g["literal"]) in literals_targets
+            ]
         stem = Path(output).stem
-        written = write_outputs(groups, output_dir, stem, fmt)
+        written = write_outputs(
+            groups,
+            output_dir,
+            stem,
+            fmt,
+            paths_scanned=[str(p) for p in paths],
+            min_count=min_count,
+            mode=mode,
+            literals=sorted(literals_targets),
+        )
     except KeyboardInterrupt:
         interrupted = True
         _console.print("[yellow]Scan interrupted by user.[/yellow]")

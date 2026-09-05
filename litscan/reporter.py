@@ -100,7 +100,15 @@ _CSS = """
 """
 
 
-def _write_json(groups: list[LiteralGroup], path: Path, run_date: str) -> None:
+def _write_json(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+    groups: list[LiteralGroup],
+    path: Path,
+    run_date: str,
+    paths_scanned: list[str],
+    min_count: int,
+    mode: str,
+    literals: list[str],
+) -> None:
     """Write literal groups as a JSON file.
 
     Author: Ron Webb
@@ -110,6 +118,10 @@ def _write_json(groups: list[LiteralGroup], path: Path, run_date: str) -> None:
         "application": "litscan",
         "version": __version__,
         "run-date": run_date,
+        "paths-scanned": paths_scanned,
+        "min-count": min_count,
+        "mode": mode,
+        "literals": literals,
         "findings": groups,
     }
     path.write_text(json.dumps(report, indent=2), encoding="utf-8")
@@ -158,8 +170,16 @@ def _build_thead_html() -> str:
     )
 
 
-def _build_html_scaffold(
-    run_date: str, total: int, unique: int, rows_html: str, script: str
+def _build_html_scaffold(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+    run_date: str,
+    total: int,
+    unique: int,
+    rows_html: str,
+    script: str,
+    paths_scanned: list[str],
+    min_count: int,
+    mode: str,
+    literals: list[str],
 ) -> str:
     """Wrap table body and script into a complete HTML document.
 
@@ -169,6 +189,10 @@ def _build_html_scaffold(
     Since: 1.0.0
     """
     thead = _build_thead_html()
+    paths_html = "<br>".join(_html.escape(p, quote=False) for p in paths_scanned)
+    literals_html = (
+        ", ".join(_html.escape(v, quote=False) for v in literals) or "(none)"
+    )
     return (
         "<!DOCTYPE html>\n"
         '<html lang="en">\n'
@@ -184,6 +208,10 @@ def _build_html_scaffold(
         "  <header>\n"
         f"    <h1>LitScan {__version__} Report</h1>\n"
         f"    <p>Date Run: {run_date}</p>\n"
+        f"    <p>Paths scanned: {paths_html}</p>\n"
+        f"    <p>Minimum count: {min_count}</p>\n"
+        f"    <p>Mode: {_html.escape(mode, quote=False)}</p>\n"
+        f"    <p>Target literals: {literals_html}</p>\n"
         "  </header>\n"
         f'  <p class="summary">Found {total} literals &mdash; {unique} unique</p>\n'
         '  <div class="table-wrap">\n'
@@ -201,7 +229,14 @@ def _build_html_scaffold(
     )
 
 
-def _build_html(groups: list[LiteralGroup], run_date: str) -> str:
+def _build_html(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
+    groups: list[LiteralGroup],
+    run_date: str,
+    paths_scanned: list[str],
+    min_count: int,
+    mode: str,
+    literals: list[str],
+) -> str:
     """Build an HTML report string for the given literal groups.
 
     Author: Ron Webb
@@ -318,23 +353,48 @@ def _build_html(groups: list[LiteralGroup], run_date: str) -> str:
         "})();\n"
         "</script>\n"
     )
-    return _build_html_scaffold(run_date, total, unique, rows_html, script)
+    return _build_html_scaffold(
+        run_date,
+        total,
+        unique,
+        rows_html,
+        script,
+        paths_scanned,
+        min_count,
+        mode,
+        literals,
+    )
 
 
-def _write_html(groups: list[LiteralGroup], path: Path, run_date: str) -> None:
+def _write_html(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+    groups: list[LiteralGroup],
+    path: Path,
+    run_date: str,
+    paths_scanned: list[str],
+    min_count: int,
+    mode: str,
+    literals: list[str],
+) -> None:
     """Write literal groups as an HTML report file.
 
     Author: Ron Webb
     Since: 1.0.0
     """
-    path.write_text(_build_html(groups, run_date), encoding="utf-8")
+    path.write_text(
+        _build_html(groups, run_date, paths_scanned, min_count, mode, literals),
+        encoding="utf-8",
+    )
 
 
-def write_outputs(
+def write_outputs(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     groups: list[LiteralGroup],
     output_dir: Path,
     stem: str,
     fmt: str,
+    paths_scanned: list[str],
+    min_count: int = 0,
+    mode: str = "both",
+    literals: list[str] | None = None,
 ) -> list[Path]:
     """Write output files according to the requested format.
 
@@ -345,13 +405,18 @@ def write_outputs(
     """
     output_dir.mkdir(parents=True, exist_ok=True)
     run_date = datetime.now().strftime(_DATE_FORMAT)
+    literals = literals or []
     written: list[Path] = []
     if fmt in ("json", "all"):
         json_path = output_dir / f"{stem}.json"
-        _write_json(groups, json_path, run_date)
+        _write_json(
+            groups, json_path, run_date, paths_scanned, min_count, mode, literals
+        )
         written.append(json_path)
     if fmt in ("html", "all"):
         html_path = output_dir / f"{stem}.html"
-        _write_html(groups, html_path, run_date)
+        _write_html(
+            groups, html_path, run_date, paths_scanned, min_count, mode, literals
+        )
         written.append(html_path)
     return written

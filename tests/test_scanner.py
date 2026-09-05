@@ -15,9 +15,12 @@ from litscan.scanner import (
     EXTENSION_TO_LANGUAGE,
     FUNCTION_NODE_TYPES,
     LITERAL_NODE_TYPES,
+    NUMBER_LITERAL_NODE_TYPES,
+    STRING_LITERAL_NODE_TYPES,
     LiteralOccurrence,
     _is_docstring,
     _load_ignore_patterns,
+    decode_literal,
     scan_file,
     scan_literals,
 )
@@ -917,3 +920,96 @@ def test_scan_file_functions_only_rust_excludes_global() -> None:
     """--functions-only must exclude global-scope literals in Rust."""
     occurrences = scan_file(_FIXTURES / "func_sample.rs", functions_only=True)
     assert '"module_string"' not in _values(occurrences)
+
+
+# ---------------------------------------------------------------------------
+# --mode string|number|both
+# ---------------------------------------------------------------------------
+
+
+def test_string_number_node_types_union_covers_literal_node_types() -> None:
+    """Every language's string+number split must reconstruct LITERAL_NODE_TYPES."""
+    for language, expected in LITERAL_NODE_TYPES.items():
+        combined = STRING_LITERAL_NODE_TYPES.get(
+            language, frozenset()
+        ) | NUMBER_LITERAL_NODE_TYPES.get(language, frozenset())
+        assert combined == expected
+
+
+def test_scan_literals_mode_string_excludes_numbers() -> None:
+    """--mode string must exclude numeric literals."""
+    occurrences = scan_literals(
+        b"x = 'hello'; y = 42", Path("f.py"), "Python", mode="string"
+    )
+    values = _values(occurrences)
+    assert "'hello'" in values
+    assert "42" not in values
+
+
+def test_scan_literals_mode_number_excludes_strings() -> None:
+    """--mode number must exclude string literals."""
+    occurrences = scan_literals(
+        b"x = 'hello'; y = 42", Path("f.py"), "Python", mode="number"
+    )
+    values = _values(occurrences)
+    assert "42" in values
+    assert "'hello'" not in values
+
+
+def test_scan_literals_mode_both_includes_everything() -> None:
+    """--mode both (default) must include both strings and numbers."""
+    occurrences = scan_literals(
+        b"x = 'hello'; y = 42", Path("f.py"), "Python", mode="both"
+    )
+    values = _values(occurrences)
+    assert "'hello'" in values
+    assert "42" in values
+
+
+def test_scan_file_mode_string_param(tmp_path: Path) -> None:
+    """scan_file must thread mode through to scan_literals."""
+    sample = tmp_path / "code.py"
+    sample.write_text("x = 'hello'; y = 42\n", encoding="utf-8")
+    values = _values(scan_file(sample, mode="string"))
+    assert "'hello'" in values
+    assert "42" not in values
+
+
+# ---------------------------------------------------------------------------
+# decode_literal
+# ---------------------------------------------------------------------------
+
+
+def test_decode_literal_plain_double_quoted() -> None:
+    """A plain double-quoted string should have its quotes stripped."""
+    assert decode_literal('"foo"') == "foo"
+
+
+def test_decode_literal_plain_single_quoted() -> None:
+    """A plain single-quoted string should have its quotes stripped."""
+    assert decode_literal("'foo'") == "foo"
+
+
+def test_decode_literal_prefixed_raw_string() -> None:
+    """A Python raw-string prefix should be stripped along with its quotes."""
+    assert decode_literal('r"foo"') == "foo"
+
+
+def test_decode_literal_triple_quoted() -> None:
+    """A triple-quoted string should have all three wrapping quotes stripped."""
+    assert decode_literal('"""foo"""') == "foo"
+
+
+def test_decode_literal_backtick_template_string() -> None:
+    """A backtick-wrapped template string should have its backticks stripped."""
+    assert decode_literal("`foo`") == "foo"
+
+
+def test_decode_literal_number_passthrough() -> None:
+    """A numeric literal has no quotes and must pass through unchanged."""
+    assert decode_literal("42") == "42"
+
+
+def test_decode_literal_empty_string_literal() -> None:
+    """An empty quoted literal should decode to an empty string."""
+    assert decode_literal('""') == ""
