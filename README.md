@@ -1,4 +1,6 @@
-# litscan 2.1.0
+# litscan
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE) [![Version](https://img.shields.io/badge/Version-2.1.0-green.svg)](CHANGELOG.md) [![Python](https://img.shields.io/badge/Python-3.14%2B-blue)](https://www.python.org/) [![PyPI](https://img.shields.io/badge/PyPI-litscan-orange)](https://pypi.org/project/litscan/)
 
 > A small CLI tool that scans a codebase for string and numeric literals, helping you quickly spot hard-coded values in source files.
 
@@ -216,11 +218,11 @@ This builds the source distribution and wheel, then uploads them to PyPI in one 
 > **Note:** PyPI releases are immutable. Once a version is published, it cannot be overwritten.  
 > To fix a mistake, yank the release via the PyPI web UI and publish a new version.
 
-## [Changelog](CHANGELOG.md)
+## [Changelog](https://github.com/rcw3bb/litscan/blob/main/CHANGELOG.md)
 
 ## License
 
-[MIT](LICENSE)
+[MIT](https://github.com/rcw3bb/litscan/blob/main/LICENSE)
 
 ## Author
 

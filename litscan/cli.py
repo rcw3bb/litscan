@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import concurrent.futures
 import os
+import sys
 import tempfile
 import uuid
 from collections.abc import Generator
@@ -37,6 +38,25 @@ from .store import SessionStore
 
 _VALID_FORMATS = ("json", "html", "all")
 _VALID_MODES = ("string", "number", "both")
+
+
+def _configure_stream_encoding(stream: object) -> None:
+    """Force *stream* to UTF-8 with a replacing error handler when possible.
+
+    Prevents UnicodeEncodeError on legacy Windows code pages or restrictive
+    locales. Streams without ``reconfigure`` (e.g. click's test runner) are
+    left untouched instead of raising.
+
+    Author: Ron Webb
+    Since: 2.1.0
+    """
+    reconfigure = getattr(stream, "reconfigure", None)
+    if callable(reconfigure):
+        reconfigure(encoding="utf-8", errors="replace")
+
+
+_configure_stream_encoding(sys.stdout)
+_configure_stream_encoding(sys.stderr)
 _console = Console(stderr=True)
 _logger = setup_logger(__name__, conf_dir=CONF_DIR)
 
@@ -105,7 +125,8 @@ def _scan_and_store(task: tuple[Path, SessionStore, str, bool, str]) -> None:
 def _build_ignore(base_dir: Path) -> IgnoreFile | None:
     """Build a path-ignore matcher anchored at *base_dir*.
 
-    Returns ``None`` when the bundled ignore file is missing so callers can
+    Returns ``None`` when the bundled ignore file is missing or unreadable
+    (including a decoding failure from non-UTF-8 content) so callers can
     proceed without path filtering instead of failing the whole scan.
 
     Author: Ron Webb
@@ -115,6 +136,11 @@ def _build_ignore(base_dir: Path) -> IgnoreFile | None:
         return IgnoreFile(PATH_IGNORE_PATH, base_dir=base_dir)
     except FileNotFoundError:
         _logger.warning("Ignore file not found at %s", PATH_IGNORE_PATH)
+        return None
+    except UnicodeDecodeError as exc:
+        _logger.warning(
+            "Ignore file at %s is not valid UTF-8: %s", PATH_IGNORE_PATH, exc
+        )
         return None
 
 

@@ -10,12 +10,17 @@
 - `--literals <values>` CLI option (semicolon-separated) to restrict the report to specific target literal values, matched against each literal's decoded (unquoted) value via the new `decode_literal()` helper in `scanner.py`. Multi-line literals are never matched.
 - `paths-scanned`, `min-count`, `mode`, and `literals` fields added to `ScanReport` (JSON) and rendered in the HTML report header, recording the resolved scan paths and the active filters for a run.
 - New `braincraft (>=1.3.0,<2.0.0)` runtime dependency.
+- `tests/fixtures/cli_project/` fixture tree and subprocess-based integration tests in `test_cli.py` that invoke the installed `litscan` console script directly.
 
 ### Changed
 
 - `cli.discover_files()` now walks directories manually (instead of `Path.rglob`) so ignored directories can be pruned from the traversal entirely.
 - `scanner.scan_literals()` and `scanner.scan_file()` accept a `mode` parameter.
 - `reporter.write_outputs()` and its private writers accept `paths_scanned`, `min_count`, `mode`, and `literals` parameters.
+
+### Fixed
+
+- Hardened the CLI against encoding errors: `scanner._load_ignore_patterns()` now reads `lit_ignore` with `errors="replace"` so a non-UTF-8 file no longer crashes `import litscan`; `cli._build_ignore()` catches `UnicodeDecodeError` from `.litscanignore` (falling back to no path filtering) alongside the existing missing-file case; `sys.stdout`/`sys.stderr` are reconfigured to UTF-8 with `errors="replace"` at startup to prevent `UnicodeEncodeError` under restrictive locales or legacy Windows code pages.
 
 ## 2.0.1 - 2026-08-22
 

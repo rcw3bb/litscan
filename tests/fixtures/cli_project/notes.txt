@@ -1,0 +1,1 @@
+Fixture note used to verify extension filtering excludes non-source files: cli_excluded_note

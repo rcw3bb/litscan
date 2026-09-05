@@ -438,6 +438,14 @@ def test_load_ignore_patterns_compiles_each_line_as_regex(tmp_path: Path) -> Non
     assert patterns[1].search('""') is not None
 
 
+def test_load_ignore_patterns_tolerates_invalid_utf8(tmp_path: Path) -> None:
+    """_load_ignore_patterns must not raise when the file has invalid UTF-8 bytes."""
+    ignore_file = tmp_path / "lit_ignore"
+    ignore_file.write_bytes(b"^good$\n\xff\xfe^bad$\n")
+    patterns = _load_ignore_patterns(ignore_file)
+    assert any(p.pattern == "^good$" for p in patterns)
+
+
 # ---------------------------------------------------------------------------
 # scan_file – language detection from extension
 # ---------------------------------------------------------------------------

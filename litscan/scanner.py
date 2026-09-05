@@ -186,13 +186,15 @@ def _load_ignore_patterns(path: Path) -> list[re.Pattern[str]]:
     """Load regex ignore patterns from *path*.
 
     Lines starting with ``#`` and blank lines are skipped. Each remaining
-    line is compiled as a :func:`re.compile` pattern.
+    line is compiled as a :func:`re.compile` pattern. Bytes that are not
+    valid UTF-8 (e.g. a hand-edited file saved in another encoding) are
+    replaced rather than raising, since this runs at module import time.
 
     Author: Ron Webb
     Since: 1.1.0
     """
     patterns: list[re.Pattern[str]] = []
-    for line in path.read_text(encoding="utf-8").splitlines():
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
         stripped = line.strip()
         if stripped and not stripped.startswith("#"):
             patterns.append(re.compile(stripped))
