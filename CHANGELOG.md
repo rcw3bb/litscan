@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.1.1 - 2026-09-08
+
+### Fixed
+
+- `cli._build_ignore()` now resolves to the parent directory when *base_dir* is a file instead of a directory, so `IgnoreFile` is always anchored at a valid directory.
+
 ## 2.1.0 - 2026-09-05
 
 ### Added

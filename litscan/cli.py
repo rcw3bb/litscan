@@ -125,6 +125,9 @@ def _scan_and_store(task: tuple[Path, SessionStore, str, bool, str]) -> None:
 def _build_ignore(base_dir: Path) -> IgnoreFile | None:
     """Build a path-ignore matcher anchored at *base_dir*.
 
+    When *base_dir* is a file, its parent directory is used instead since
+    :class:`IgnoreFile` anchors patterns to a directory.
+
     Returns ``None`` when the bundled ignore file is missing or unreadable
     (including a decoding failure from non-UTF-8 content) so callers can
     proceed without path filtering instead of failing the whole scan.
@@ -132,6 +135,8 @@ def _build_ignore(base_dir: Path) -> IgnoreFile | None:
     Author: Ron Webb
     Since: 2.1.0
     """
+    if base_dir.is_file():
+        base_dir = base_dir.parent
     try:
         return IgnoreFile(PATH_IGNORE_PATH, base_dir=base_dir)
     except FileNotFoundError:
