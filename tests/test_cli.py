@@ -633,6 +633,23 @@ def test_build_ignore_returns_none_on_invalid_utf8(tmp_path: Path, monkeypatch) 
     assert result is None
 
 
+def test_build_ignore_uses_parent_dir_when_base_dir_is_file(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """_build_ignore must anchor to the parent directory when given a file path."""
+    ignore_file = tmp_path / ".litscanignore"
+    ignore_file.write_text("*.log\n", encoding="utf-8")
+    monkeypatch.setattr(cli, "PATH_IGNORE_PATH", ignore_file)
+    target_file = tmp_path / "code.py"
+    target_file.write_text("x = 1", encoding="utf-8")
+
+    result = cli._build_ignore(target_file)
+
+    assert result is not None
+    assert not result.is_ignored(tmp_path / "code.py")
+    assert result.is_ignored(tmp_path / "app.log")
+
+
 def test_main_min_option_filters_low_count_literals(
     tmp_path: Path, monkeypatch
 ) -> None:
