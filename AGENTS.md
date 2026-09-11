@@ -8,7 +8,7 @@ and numeric literals, helping developers spot hard-coded values in source files.
 JavaScript, TypeScript, Java, Go, Gosu, C, C++, C#, Rust, Kotlin, Swift, Scala, Groovy. Dev deps are black, pylint, pytest, and pytest-cov.
 Test: `poetry run pytest --cov=litscan tests --cov-report html`. Format and lint:
 `poetry run black litscan; poetry run pylint litscan`. Quality gates: ≥90% coverage,
-pylint 10/10. Author: Ron Webb (ron@ronella.xyz), version 2.1.0.
+pylint 10/10. Author: Ron Webb (ron@ronella.xyz), version 2.2.0.
 
 ## Tree
 
@@ -19,6 +19,8 @@ pylint 10/10. Author: Ron Webb (ron@ronella.xyz), version 2.1.0.
 - litscan/logging.ini — logging config bundled inside the package; seeded into `LITSCAN_CONFIG_DIR` on first run
 - litscan/lit_ignore — regex ignore-list (literal values); seeded into `LITSCAN_CONFIG_DIR` on first run
 - litscan/.litscanignore — gitignore-style ignore-list (files/dirs); seeded into `LITSCAN_CONFIG_DIR` on first run; read via `braincraft.ignorefile.IgnoreFile`
+- litscan/config.py — `Config` class; reads `config.ini` overrides (e.g. `[override] ignore-file`)
+- litscan/config.ini — bundled default config (`[override] ignore-file = .litscanignore`); seeded into `LITSCAN_CONFIG_DIR` on first run
 - litscan/scanner.py — tree-sitter-based literal scanning logic
 - litscan/store.py — SQLite session store (`SessionStore`); occurrences persisted per UUID, deleted after report
 - litscan/reporter.py — report generation (JSON + HTML output); exposes `write_outputs`
@@ -27,6 +29,7 @@ pylint 10/10. Author: Ron Webb (ron@ronella.xyz), version 2.1.0.
 - tests/fixtures/cli_project/ — small multi-file/dir tree used by real `litscan` subprocess integration tests in test_cli.py
 - tests/test_store.py — tests for store module
 - tests/test_reporter.py — tests for reporter module
+- tests/test_config.py — tests for config module
 - pyproject.toml — PEP 621 project metadata and Poetry build config
 - .pylintrc — pylint config (must match canonical gist)
 - reports/ — scanner output artifacts (HTML, JSON)
@@ -45,6 +48,7 @@ pylint 10/10. Author: Ron Webb (ron@ronella.xyz), version 2.1.0.
 - Apply SOLID, DRY, and composition over inheritance; use dependency injection where applicable; decompose large methods into smaller private methods.
 - When .env is used, load it with python-dotenv.
 - When you create or discover new files, update the Tree above.
+- 2026-09-12: braincraft 1.3.1's `IgnoreFile` now anchors correctly even when `base_dir` is a file (no longer needs a manual parent-dir workaround in `cli.py`).
 
 ## Note-taking
 

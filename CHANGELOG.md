@@ -1,5 +1,21 @@
 # Changelog
 
+## 2.2.0 - 2026-09-12
+
+### Added
+
+- `--target-list` CLI flag: treats `path` as a single existing file listing target paths (files and/or directories), one per line (blank lines and `#`-comment lines skipped), instead of a semicolon-separated path list.
+- `config.ini` — new bundled default file (seeded into `LITSCAN_CONFIG_DIR` like `logging.ini`/`lit_ignore`/`.litscanignore`) with an `[override]` section; its `ignore-file` key names the file used in place of `.litscanignore`, resolved relative to `LITSCAN_CONFIG_DIR`. Read via a new `Config` class in `litscan/config.py`.
+- `cli._build_ignore()` now falls back to the bundled `.litscanignore` (logging a warning) when the configured custom ignore filename is missing or unreadable, instead of giving up immediately.
+
+### Changed
+
+- Bumped `braincraft` dependency to `>=1.3.1,<2.0.0`.
+
+### Removed
+
+- `cli._build_ignore()` no longer manually resolves a file `base_dir` to its parent directory before constructing `IgnoreFile` — `braincraft` 1.3.1's `IgnoreFile` now handles a file `base_dir` internally.
+
 ## 2.1.1 - 2026-09-08
 
 ### Fixed

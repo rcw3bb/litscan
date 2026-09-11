@@ -32,6 +32,7 @@ from . import __version__
 from . import __app_name__ as _APP_NAME
 from . import CONF_DIR
 from . import PATH_IGNORE_PATH
+from .config import Config
 from .reporter import write_outputs
 from .scanner import decode_literal, scan_file
 from .store import SessionStore
@@ -59,6 +60,7 @@ _configure_stream_encoding(sys.stdout)
 _configure_stream_encoding(sys.stderr)
 _console = Console(stderr=True)
 _logger = setup_logger(__name__, conf_dir=CONF_DIR)
+_config = Config()
 
 
 def _parse_extensions(raw: str) -> list[str]:
@@ -96,6 +98,22 @@ def _parse_paths(raw: str) -> list[Path]:
     return result
 
 
+def _read_target_list(list_file: Path) -> list[Path]:
+    """Read one target path per line from *list_file*.
+
+    Blank lines and lines starting with ``#`` are skipped.
+
+    Author: Ron Webb
+    Since: 2.2.0
+    """
+    result: list[Path] = []
+    for line in list_file.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#"):
+            result.append(Path(stripped))
+    return result
+
+
 def _parse_literals(raw: str) -> set[str]:
     """Parse a semicolon-separated literal-value string into a set of targets.
 
@@ -122,31 +140,44 @@ def _scan_and_store(task: tuple[Path, SessionStore, str, bool, str]) -> None:
     )
 
 
+def _load_ignore_file(ignore_path: Path, base_dir: Path) -> IgnoreFile | None:
+    """Load an :class:`IgnoreFile` from *ignore_path*, logging failures.
+
+    Returns ``None`` on a missing or non-UTF-8 file instead of raising.
+
+    Author: Ron Webb
+    Since: 2.2.0
+    """
+    try:
+        return IgnoreFile(ignore_path, base_dir=base_dir)
+    except FileNotFoundError:
+        _logger.warning("Ignore file not found at %s", ignore_path)
+        return None
+    except UnicodeDecodeError as exc:
+        _logger.warning("Ignore file at %s is not valid UTF-8: %s", ignore_path, exc)
+        return None
+
+
 def _build_ignore(base_dir: Path) -> IgnoreFile | None:
     """Build a path-ignore matcher anchored at *base_dir*.
 
-    When *base_dir* is a file, its parent directory is used instead since
-    :class:`IgnoreFile` anchors patterns to a directory.
-
-    Returns ``None`` when the bundled ignore file is missing or unreadable
-    (including a decoding failure from non-UTF-8 content) so callers can
+    The ignore filename is resolved from ``config.ini``'s
+    ``[override] ignore-file`` setting under :data:`CONF_DIR`; when that file
+    is missing, the bundled default ``.litscanignore`` is tried instead.
+    Returns ``None`` when neither ignore file is usable, so callers can
     proceed without path filtering instead of failing the whole scan.
 
     Author: Ron Webb
     Since: 2.1.0
     """
-    if base_dir.is_file():
-        base_dir = base_dir.parent
-    try:
-        return IgnoreFile(PATH_IGNORE_PATH, base_dir=base_dir)
-    except FileNotFoundError:
-        _logger.warning("Ignore file not found at %s", PATH_IGNORE_PATH)
+    custom_path = Path(CONF_DIR) / _config.get_ignore_file()
+    ignore = _load_ignore_file(custom_path, base_dir)
+    _logger.debug("Loaded ignore file from %s: %s", custom_path, ignore)
+    if ignore is not None:
+        return ignore
+    if custom_path == Path(PATH_IGNORE_PATH):
         return None
-    except UnicodeDecodeError as exc:
-        _logger.warning(
-            "Ignore file at %s is not valid UTF-8: %s", PATH_IGNORE_PATH, exc
-        )
-        return None
+    return _load_ignore_file(Path(PATH_IGNORE_PATH), base_dir)
 
 
 def _walk_unignored(
@@ -327,6 +358,17 @@ def _run_concurrent_scan(  # pylint: disable=too-many-arguments,too-many-positio
         "'foo;bar'). Omit to include all literals."
     ),
 )
+@click.option(
+    "--target-list",
+    "target_list",
+    is_flag=True,
+    default=False,
+    help=(
+        "Treat PATH as a single existing file listing target paths (files "
+        "and/or directories), one per line, instead of a semicolon-separated "
+        "path list. Blank lines and lines starting with '#' are skipped."
+    ),
+)
 def main(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
     path: str,
     ext: str,
@@ -339,6 +381,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-positional-arguments,to
     min_count: int,
     mode: str,
     literals: str,
+    target_list: bool,
 ) -> None:
     """Scan source files for string and numeric literals.
 
@@ -350,6 +393,12 @@ def main(  # pylint: disable=too-many-arguments,too-many-positional-arguments,to
     _console.print(f"[bold]{_header}[/bold]")
     extensions = _parse_extensions(ext) if ext else []
     paths = _parse_paths(path)
+    if target_list:
+        if len(paths) != 1 or not paths[0].is_file():
+            raise click.UsageError(
+                "--target-list requires PATH to be a single existing file."
+            )
+        paths = _read_target_list(paths[0])
     literals_targets = _parse_literals(literals) if literals else set()
     seen: set[Path] = set()
     files: list[Path] = []

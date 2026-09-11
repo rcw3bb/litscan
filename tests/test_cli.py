@@ -42,6 +42,26 @@ def test_parse_paths_ignores_empty_segments() -> None:
     assert result == [Path("src"), Path("lib")]
 
 
+def test_read_target_list_parses_one_path_per_line(tmp_path: Path) -> None:
+    """It should parse one target path per line into a list of Path objects."""
+    list_file = tmp_path / "targets.txt"
+    list_file.write_text("src\nlib\ntests\n", encoding="utf-8")
+
+    result = cli._read_target_list(list_file)
+
+    assert result == [Path("src"), Path("lib"), Path("tests")]
+
+
+def test_read_target_list_skips_blank_and_comment_lines(tmp_path: Path) -> None:
+    """It should skip blank lines and lines starting with '#'."""
+    list_file = tmp_path / "targets.txt"
+    list_file.write_text("src\n\n# a comment\n  \nlib\n", encoding="utf-8")
+
+    result = cli._read_target_list(list_file)
+
+    assert result == [Path("src"), Path("lib")]
+
+
 def test_discover_files_for_file_and_dir(tmp_path: Path) -> None:
     """It should discover files from both file and directory inputs."""
     sample_file = tmp_path / "sample.js"
@@ -615,7 +635,9 @@ def test_build_ignore_returns_none_when_file_missing(
     tmp_path: Path, monkeypatch
 ) -> None:
     """_build_ignore must return None and log a warning when the file is absent."""
-    monkeypatch.setattr(cli, "PATH_IGNORE_PATH", tmp_path / "missing.litscanignore")
+    monkeypatch.setattr(cli, "CONF_DIR", str(tmp_path))
+    monkeypatch.setattr(cli._config, "get_ignore_file", lambda: ".litscanignore")
+    monkeypatch.setattr(cli, "PATH_IGNORE_PATH", tmp_path / ".litscanignore")
 
     result = cli._build_ignore(tmp_path)
 
@@ -626,6 +648,8 @@ def test_build_ignore_returns_none_on_invalid_utf8(tmp_path: Path, monkeypatch) 
     """_build_ignore must return None instead of raising on non-UTF-8 file content."""
     ignore_file = tmp_path / ".litscanignore"
     ignore_file.write_bytes(b"\xff\xfe*.log\n")
+    monkeypatch.setattr(cli, "CONF_DIR", str(tmp_path))
+    monkeypatch.setattr(cli._config, "get_ignore_file", lambda: ".litscanignore")
     monkeypatch.setattr(cli, "PATH_IGNORE_PATH", ignore_file)
 
     result = cli._build_ignore(tmp_path)
@@ -639,6 +663,8 @@ def test_build_ignore_uses_parent_dir_when_base_dir_is_file(
     """_build_ignore must anchor to the parent directory when given a file path."""
     ignore_file = tmp_path / ".litscanignore"
     ignore_file.write_text("*.log\n", encoding="utf-8")
+    monkeypatch.setattr(cli, "CONF_DIR", str(tmp_path))
+    monkeypatch.setattr(cli._config, "get_ignore_file", lambda: ".litscanignore")
     monkeypatch.setattr(cli, "PATH_IGNORE_PATH", ignore_file)
     target_file = tmp_path / "code.py"
     target_file.write_text("x = 1", encoding="utf-8")
@@ -648,6 +674,51 @@ def test_build_ignore_uses_parent_dir_when_base_dir_is_file(
     assert result is not None
     assert not result.is_ignored(tmp_path / "code.py")
     assert result.is_ignored(tmp_path / "app.log")
+
+
+def test_build_ignore_uses_configured_custom_filename(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """_build_ignore must use the config.ini-configured filename when present."""
+    custom_file = tmp_path / "custom.ignore"
+    custom_file.write_text("*.log\n", encoding="utf-8")
+    monkeypatch.setattr(cli, "CONF_DIR", str(tmp_path))
+    monkeypatch.setattr(cli._config, "get_ignore_file", lambda: "custom.ignore")
+    monkeypatch.setattr(cli, "PATH_IGNORE_PATH", tmp_path / ".litscanignore")
+
+    result = cli._build_ignore(tmp_path)
+
+    assert result is not None
+    assert result.is_ignored(tmp_path / "app.log")
+
+
+def test_build_ignore_falls_back_to_default_when_custom_missing(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """_build_ignore must fall back to the built-in ignore file when the configured one is absent."""
+    default_file = tmp_path / ".litscanignore"
+    default_file.write_text("*.log\n", encoding="utf-8")
+    monkeypatch.setattr(cli, "CONF_DIR", str(tmp_path))
+    monkeypatch.setattr(cli._config, "get_ignore_file", lambda: "custom.ignore")
+    monkeypatch.setattr(cli, "PATH_IGNORE_PATH", default_file)
+
+    result = cli._build_ignore(tmp_path)
+
+    assert result is not None
+    assert result.is_ignored(tmp_path / "app.log")
+
+
+def test_build_ignore_returns_none_when_custom_and_default_missing(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """_build_ignore must return None when neither the custom nor default file exists."""
+    monkeypatch.setattr(cli, "CONF_DIR", str(tmp_path))
+    monkeypatch.setattr(cli._config, "get_ignore_file", lambda: "custom.ignore")
+    monkeypatch.setattr(cli, "PATH_IGNORE_PATH", tmp_path / ".litscanignore")
+
+    result = cli._build_ignore(tmp_path)
+
+    assert result is None
 
 
 def test_main_min_option_filters_low_count_literals(
@@ -754,3 +825,47 @@ def test_main_json_contains_paths_scanned(tmp_path: Path, monkeypatch) -> None:
 
     assert result.exit_code == 0
     assert data["paths-scanned"] == [str(tmp_path)]
+
+
+def test_main_target_list_scans_listed_targets(tmp_path: Path, monkeypatch) -> None:
+    """--target-list should scan the targets listed in the given file."""
+    sample_file = tmp_path / "code.js"
+    sample_file.write_text("x = 'listed';", encoding="utf-8")
+    list_file = tmp_path / "targets.txt"
+    list_file.write_text(f"{sample_file}\n", encoding="utf-8")
+    out_dir = tmp_path / "out"
+
+    monkeypatch.setattr(cli, "setup_logger", lambda _name: logging.getLogger("tests"))
+    runner = CliRunner()
+
+    result = runner.invoke(
+        cli.main,
+        [str(list_file), "--target-list", "--output-dir", str(out_dir)],
+    )
+    data = json.loads((out_dir / "litscan-output.json").read_text(encoding="utf-8"))
+    all_literals = [g["literal"] for g in data["findings"]]
+
+    assert result.exit_code == 0
+    assert "'listed'" in all_literals
+
+
+def test_main_target_list_rejects_multiple_paths(tmp_path: Path, monkeypatch) -> None:
+    """--target-list should reject a PATH containing more than one semicolon-separated entry."""
+    monkeypatch.setattr(cli, "setup_logger", lambda _name: logging.getLogger("tests"))
+    runner = CliRunner()
+
+    result = runner.invoke(cli.main, [f"{tmp_path};{tmp_path}", "--target-list"])
+
+    assert result.exit_code != 0
+    assert "--target-list" in result.output
+
+
+def test_main_target_list_rejects_directory_path(tmp_path: Path, monkeypatch) -> None:
+    """--target-list should reject a PATH that is a directory instead of a file."""
+    monkeypatch.setattr(cli, "setup_logger", lambda _name: logging.getLogger("tests"))
+    runner = CliRunner()
+
+    result = runner.invoke(cli.main, [str(tmp_path), "--target-list"])
+
+    assert result.exit_code != 0
+    assert "--target-list" in result.output

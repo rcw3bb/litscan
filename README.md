@@ -1,6 +1,6 @@
 # litscan
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE) [![Version](https://img.shields.io/badge/Version-2.1.1-green.svg)](CHANGELOG.md) [![Python](https://img.shields.io/badge/Python-3.14%2B-blue)](https://www.python.org/) [![PyPI](https://img.shields.io/badge/PyPI-litscan-orange)](https://pypi.org/project/litscan/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/rcw3bb/litscan/blob/main/LICENSE) [![Version](https://img.shields.io/badge/Version-2.2.0-green.svg)](https://github.com/rcw3bb/litscan/blob/main/CHANGELOG.md) [![Python](https://img.shields.io/badge/Python-3.14%2B-blue)](https://www.python.org/) [![PyPI](https://img.shields.io/badge/PyPI-litscan-orange)](https://pypi.org/project/litscan/)
 
 > A small CLI tool that scans a codebase for string and numeric literals, helping you quickly spot hard-coded values in source files.
 
@@ -67,6 +67,7 @@ Results are grouped by unique literal value and sorted by occurrence count (high
 | `--min <count>` | `0` | Minimum occurrence count a literal must have to be included in the report. `0` means no filtering. |
 | `--mode <mode>` | `both` | Literal category to scan: `string`, `number`, or `both`. |
 | `--literals <values>` | _(all)_ | Semicolon-separated target literal values to restrict the report to (e.g. `foo;bar`). Matched against the decoded, single-line literal value; multi-line literals are never matched. |
+| `--target-list` | _(off)_ | Treat `path` as a single existing file listing target paths (files and/or directories), one per line, instead of a semicolon-separated path list. Blank lines and lines starting with `#` are skipped. |
 | `--version` | | Print the version and exit. |
 
 ### Examples
@@ -113,11 +114,17 @@ Restrict the report to specific target literal values:
 litscan src --literals "TODO;FIXME"
 ```
 
+Scan the targets listed in a file, one path per line:
+
+```powershell
+litscan targets.txt --target-list
+```
+
 ## Configuration
 
 | Environment variable | Description |
 |----------------------|-------------|
-| `LITSCAN_CONFIG_DIR` | Directory where `logging.ini`, `lit_ignore`, and `.litscanignore` are seeded on first run and read from. When unset, the bundled copies inside the package are used directly. |
+| `LITSCAN_CONFIG_DIR` | Directory where `logging.ini`, `lit_ignore`, `.litscanignore`, and `config.ini` are seeded on first run and read from. When unset, the bundled copies inside the package are used directly. |
 
 ### Ignore patterns
 
@@ -126,6 +133,17 @@ The `lit_ignore` file (seeded into `LITSCAN_CONFIG_DIR` on first run) contains o
 ### Ignored files and directories
 
 The `.litscanignore` file (also seeded into `LITSCAN_CONFIG_DIR` on first run) uses gitignore syntax to exclude entire files or directories from being scanned in the first place — matching directories are pruned during traversal, so their contents are never read. It ships with sensible defaults (`.git/`, `node_modules/`, `dist/`, `build/`, `__pycache__/`, `.venv/`); edit the file to add project-specific paths to skip.
+
+### Overriding the ignore filename
+
+`config.ini` (also seeded into `LITSCAN_CONFIG_DIR` on first run) contains an `[override]` section with an `ignore-file` key, which names the file used in place of `.litscanignore`, resolved relative to `LITSCAN_CONFIG_DIR`:
+
+```ini
+[override]
+ignore-file = .litscanignore
+```
+
+Point `ignore-file` at a different filename to use an alternate ignore file (also placed inside `LITSCAN_CONFIG_DIR`). If the configured file is missing, litscan logs a warning and falls back to the bundled `.litscanignore`.
 
 ### Report metadata
 
@@ -150,6 +168,7 @@ flowchart TD
     CLI["cli.py\n(entry point)"] --> logenrich["setup_logger()\nlogenrich"]
     CLI --> discover["discover_files()"]
     discover --> pathignore[".litscanignore\n(braincraft.IgnoreFile)"]
+    pathignore --> config["config.ini\n([override] ignore-file)"]
     discover --> concurrent["ThreadPoolExecutor\n(parallel scan)"]
     concurrent --> scan["scan_file()\nscanner.py"]
     scan --> parser["parser.py\n(tree-sitter)"]
@@ -164,6 +183,7 @@ flowchart TD
 | Module | Responsibility |
 |--------|---------------|
 | `cli.py` | Argument parsing, file discovery, orchestration |
+| `config.py` | `Config` — reads `config.ini` overrides (e.g. `[override] ignore-file`) |
 | `parser.py` | Tree-sitter language loading (LRU-cached) and source parsing |
 | `scanner.py` | AST-based literal extraction; `LiteralOccurrence` / `LiteralGroup` types |
 | `store.py` | `SessionStore` — thread-safe SQLite scratch store; one UUID per scan run |
