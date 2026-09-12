@@ -135,10 +135,10 @@ def test_scan_literals_python_empty_source() -> None:
 
 def test_scan_literals_python_correct_line_and_column() -> None:
     """It should report the correct 1-based line and 0-based column."""
-    src = b"x = 1\ny = 'hello'\n"
+    src = b"x = 2\ny = 'hello'\n"
     occurrences = scan_literals(src, Path("f.py"), "Python")
     by_value = {o.value: o for o in occurrences}
-    assert by_value["1"].line == 1
+    assert by_value["2"].line == 1
     assert by_value["'hello'"].line == 2
     assert by_value["'hello'"].column == 4
 
@@ -305,12 +305,12 @@ def test_scan_literals_go_comment_excluded() -> None:
 
 def test_scan_literals_python_module_docstring_excluded() -> None:
     """The module-level docstring must be excluded from results."""
-    src = b'"""Module docs with \'secret\' and 42."""\nx = 1'
+    src = b'"""Module docs with \'secret\' and 42."""\nx = 7'
     occurrences = scan_literals(src, Path("f.py"), "Python")
     values = _values(occurrences)
     assert "42" not in _numbers(occurrences)
     assert "'secret'" not in values
-    assert "1" in _numbers(occurrences)
+    assert "7" in _numbers(occurrences)
 
 
 def test_scan_literals_python_function_docstring_excluded() -> None:
