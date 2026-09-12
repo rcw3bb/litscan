@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.2.1 - 2026-09-13
+
+### Changed
+
+- `lit_ignore` — expanded default ignore patterns to cover common no-signal numeric/string literals: `1`, `-1`, `1.0`, `-1.0` (alongside the existing `0`, `0.0`, `""`) and single-quoted empty strings (`''`).
+
 ## 2.2.0 - 2026-09-12
 
 ### Added
